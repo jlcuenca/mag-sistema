@@ -1,0 +1,21 @@
+# render.yaml — Configuración para despliegue en Render.com
+# Contiene sólo el servicio de backend (FastAPI Python)
+# El frontend (Next.js) se despliega por separado en Vercel.
+
+services:
+  - type: web
+    name: mag-api
+    runtime: python
+    region: ohio          # us-east-ohio (más cercano a México)
+    plan: free            # Tier gratuito (750h/mes, cold start ~30s)
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DEMO_MODE
+        value: "true"
+      - key: FRONTEND_URL
+        sync: false       # Se agrega manualmente en el panel de Render
+                          # con la URL de Vercel: https://mag-sistema.vercel.app
+      - key: PYTHONUTF8
+        value: "1"

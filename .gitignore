@@ -1,0 +1,57 @@
+# .gitignore raíz del proyecto MAG
+# ─────────────────────────────────────────────────────────────────
+
+# ── Python / FastAPI ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+
+# ── Archivos de datos confidenciales (NO subir al repo) ───────────
+*.xlsx
+*.xlsm
+*.xlsb
+*.xls
+*.docx
+*.doc
+*.pdf
+*.zip
+
+# ── Base de datos SQLite ──────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+sistema/data/
+
+# ── Node / Next.js ───────────────────────────────────────────────
+sistema/node_modules/
+sistema/.next/
+sistema/out/
+sistema/.env.local
+sistema/.env*.local
+
+# ── Variables de entorno ─────────────────────────────────────────
+.env
+.env.local
+.env.production
+# (sí subir los .example para referencia)
+
+# ── SO / IDEs ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
+.vscode/settings.json
+.idea/
+
+# ── Logs ─────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
