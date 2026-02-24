@@ -17,7 +17,10 @@ from .schemas import (
     ConciliacionResponse, ResumenConciliacion, ItemConciliacion,
     ImportacionResult
 )
-from .rules import normalizar_poliza, calcular_mystatus, es_reexpedicion, agrupar_segmento, clasificar_cy
+from .rules import (
+    normalizar_poliza, calcular_mystatus, es_reexpedicion, agrupar_segmento,
+    clasificar_cy, aplicar_reglas_poliza, aplicar_reglas_batch
+)
 
 # ═══════════════════════════════════════════════════════════════════
 # DASHBOARD
@@ -456,6 +459,20 @@ async def importar_excel_polizas(
                 # Status
                 status = (row.get("STATUS") or "PAGADA").strip()
                 mystatus = calcular_mystatus(status)
+                moneda = (row.get("MON") or "MN").strip()
+
+                # ── Aplicar reglas de cálculo (columnas AUTOMATICO) ──
+                poliza_dict = {
+                    "poliza_original": str(pol_num).strip(),
+                    "fecha_inicio": fecha_ini,
+                    "prima_neta": prima_neta,
+                    "moneda": moneda,
+                    "mystatus": mystatus,
+                    "status_recibo": status,
+                    "anio_aplicacion": anio,
+                    "es_nueva": None,
+                }
+                reglas = aplicar_reglas_poliza(poliza_dict, ramo_codigo=ramo_codigo)
 
                 # Verificar si ya existe
                 existente = db.execute(
@@ -468,9 +485,33 @@ async def importar_excel_polizas(
                         UPDATE polizas SET
                             prima_neta = :pn, prima_total = :pt,
                             status_recibo = :sr, mystatus = :ms,
+                            moneda = :mon,
+                            largo_poliza = :largo, raiz_poliza_6 = :raiz6,
+                            terminacion = :term, id_compuesto = :id_comp,
+                            es_reexpedicion = :reexp, primer_anio = :primer,
+                            fecha_aplicacion = :fec_apli, mes_aplicacion = :mes_apli,
+                            pendientes_pago = :pend, trimestre = :trim,
+                            flag_pagada = :fpag, flag_nueva_formal = :fnueva,
+                            prima_anual_pesos = :pap, equivalencias_emitidas = :eqe,
+                            equivalencias_pagadas = :eqp, flag_cancelada = :fcanc,
+                            prima_proporcional = :pprop, condicional_prima = :cprim,
+                            prima_acumulada_basica = :pacum,
                             updated_at = datetime('now')
                         WHERE id = :id
-                    """), {"pn": prima_neta, "pt": prima_total, "sr": status, "ms": mystatus, "id": existente})
+                    """), {
+                        "pn": prima_neta, "pt": prima_total, "sr": status,
+                        "ms": mystatus, "mon": moneda, "id": existente,
+                        "largo": reglas["largo_poliza"], "raiz6": reglas["raiz_poliza_6"],
+                        "term": reglas["terminacion"], "id_comp": reglas["id_compuesto"],
+                        "reexp": reglas["es_reexpedicion"], "primer": reglas["primer_anio"],
+                        "fec_apli": reglas["fecha_aplicacion"], "mes_apli": reglas["mes_aplicacion"],
+                        "pend": reglas["pendientes_pago"], "trim": reglas["trimestre"],
+                        "fpag": reglas["flag_pagada"], "fnueva": reglas["flag_nueva_formal"],
+                        "pap": reglas["prima_anual_pesos"], "eqe": reglas["equivalencias_emitidas"],
+                        "eqp": reglas["equivalencias_pagadas"], "fcanc": reglas["flag_cancelada"],
+                        "pprop": reglas["prima_proporcional"], "cprim": reglas["condicional_prima"],
+                        "pacum": reglas["prima_acumulada_basica"],
+                    })
                     actualizados += 1
                 else:
                     db.execute(text("""
@@ -480,14 +521,28 @@ async def importar_excel_polizas(
                             prima_total, prima_neta, iva, recargo, suma_asegurada,
                             deducible, num_asegurados, forma_pago, tipo_pago,
                             status_recibo, gama, mystatus, periodo_aplicacion,
-                            anio_aplicacion, fuente
+                            anio_aplicacion, moneda, fuente,
+                            largo_poliza, raiz_poliza_6, terminacion, id_compuesto,
+                            es_reexpedicion, primer_anio, fecha_aplicacion,
+                            mes_aplicacion, pendientes_pago, trimestre,
+                            flag_pagada, flag_nueva_formal, prima_anual_pesos,
+                            equivalencias_emitidas, equivalencias_pagadas,
+                            flag_cancelada, prima_proporcional, condicional_prima,
+                            prima_acumulada_basica
                         ) VALUES (
                             :po, :pe, :ai, :pi,
                             :an, :fi, :ff, :fe,
                             :pt, :pn, :iv, :re, :su,
                             :de, :na, :fp, :tp,
                             :sr, :ga, :ms, :per,
-                            :anio, 'EXCEL_IMPORT'
+                            :anio, :mon, 'EXCEL_IMPORT',
+                            :largo, :raiz6, :term, :id_comp,
+                            :reexp, :primer, :fec_apli,
+                            :mes_apli, :pend, :trim,
+                            :fpag, :fnueva, :pap,
+                            :eqe, :eqp,
+                            :fcanc, :pprop, :cprim,
+                            :pacum
                         )
                     """), {
                         "po": str(pol_num).strip(),
@@ -501,7 +556,17 @@ async def importar_excel_polizas(
                         "fp": row.get("FP"), "tp": row.get("TIPPAG"),
                         "sr": status, "ga": gama, "ms": mystatus,
                         "per": f"{anio}-{fecha_ini[5:7]}" if fecha_ini and anio else None,
-                        "anio": anio,
+                        "anio": anio, "mon": moneda,
+                        "largo": reglas["largo_poliza"], "raiz6": reglas["raiz_poliza_6"],
+                        "term": reglas["terminacion"], "id_comp": reglas["id_compuesto"],
+                        "reexp": reglas["es_reexpedicion"], "primer": reglas["primer_anio"],
+                        "fec_apli": reglas["fecha_aplicacion"], "mes_apli": reglas["mes_aplicacion"],
+                        "pend": reglas["pendientes_pago"], "trim": reglas["trimestre"],
+                        "fpag": reglas["flag_pagada"], "fnueva": reglas["flag_nueva_formal"],
+                        "pap": reglas["prima_anual_pesos"], "eqe": reglas["equivalencias_emitidas"],
+                        "eqp": reglas["equivalencias_pagadas"], "fcanc": reglas["flag_cancelada"],
+                        "pprop": reglas["prima_proporcional"], "cprim": reglas["condicional_prima"],
+                        "pacum": reglas["prima_acumulada_basica"],
                     })
                     nuevos += 1
 
@@ -536,6 +601,95 @@ async def importar_excel_polizas(
 
     except Exception as e:
         raise HTTPException(500, f"Error procesando archivo: {str(e)}")
+
+
+@router_importacion.post("/aplicar-reglas", response_model=ImportacionResult)
+def aplicar_reglas_todas(
+    anio: Optional[int] = Query(None, description="Año a recalcular (None = todos)"),
+    ramo: Optional[str] = Query(None, description="Ramo: vida, gmm, o None = todos"),
+    db: Session = Depends(get_db)
+):
+    """
+    Recalcula todas las columnas derivadas (reglas del AUTOMATICO)
+    sobre las pólizas existentes en la BD.
+    Útil después de cambiar reglas o actualizar datos de referencia.
+    """
+    conditions = ["1=1"]
+    params: dict = {}
+    if anio:
+        conditions.append("p.anio_aplicacion = :anio")
+        params["anio"] = anio
+    if ramo == "vida":
+        conditions.append("pr.ramo_codigo = 11")
+    elif ramo == "gmm":
+        conditions.append("pr.ramo_codigo = 34")
+
+    where = " AND ".join(conditions)
+    rows = db.execute(text(f"""
+        SELECT p.*, pr.ramo_codigo, pr.ramo_nombre
+        FROM polizas p
+        LEFT JOIN productos pr ON p.producto_id = pr.id
+        WHERE {where}
+    """), params).mappings().all()
+
+    polizas_dicts = [dict(r) for r in rows]
+    if not polizas_dicts:
+        return ImportacionResult(
+            success=True, registros_procesados=0, registros_nuevos=0,
+            registros_actualizados=0, registros_error=0, errores=[],
+            mensaje="No se encontraron pólizas para recalcular"
+        )
+
+    resultados = aplicar_reglas_batch(polizas_dicts)
+    actualizados = 0
+    errores = []
+
+    for poliza_dict, reglas in zip(polizas_dicts, resultados):
+        try:
+            db.execute(text("""
+                UPDATE polizas SET
+                    largo_poliza = :largo, raiz_poliza_6 = :raiz6,
+                    terminacion = :term, num_reexpediciones = :nreexp,
+                    id_compuesto = :id_comp,
+                    es_reexpedicion = :reexp, primer_anio = :primer,
+                    fecha_aplicacion = :fec_apli, mes_aplicacion = :mes_apli,
+                    pendientes_pago = :pend, trimestre = :trim,
+                    flag_pagada = :fpag, flag_nueva_formal = :fnueva,
+                    prima_anual_pesos = :pap, equivalencias_emitidas = :eqe,
+                    equivalencias_pagadas = :eqp, flag_cancelada = :fcanc,
+                    prima_proporcional = :pprop, condicional_prima = :cprim,
+                    prima_acumulada_basica = :pacum,
+                    updated_at = datetime('now')
+                WHERE id = :id
+            """), {
+                "id": poliza_dict["id"],
+                "largo": reglas["largo_poliza"], "raiz6": reglas["raiz_poliza_6"],
+                "term": reglas["terminacion"], "nreexp": reglas["num_reexpediciones"],
+                "id_comp": reglas["id_compuesto"],
+                "reexp": reglas["es_reexpedicion"], "primer": reglas["primer_anio"],
+                "fec_apli": reglas["fecha_aplicacion"], "mes_apli": reglas["mes_aplicacion"],
+                "pend": reglas["pendientes_pago"], "trim": reglas["trimestre"],
+                "fpag": reglas["flag_pagada"], "fnueva": reglas["flag_nueva_formal"],
+                "pap": reglas["prima_anual_pesos"], "eqe": reglas["equivalencias_emitidas"],
+                "eqp": reglas["equivalencias_pagadas"], "fcanc": reglas["flag_cancelada"],
+                "pprop": reglas["prima_proporcional"], "cprim": reglas["condicional_prima"],
+                "pacum": reglas["prima_acumulada_basica"],
+            })
+            actualizados += 1
+        except Exception as e:
+            errores.append(f"Póliza {poliza_dict.get('poliza_original')}: {str(e)}")
+
+    db.commit()
+
+    return ImportacionResult(
+        success=True,
+        registros_procesados=len(polizas_dicts),
+        registros_nuevos=0,
+        registros_actualizados=actualizados,
+        registros_error=len(errores),
+        errores=errores[:10],
+        mensaje=f"Reglas aplicadas: {actualizados} pólizas actualizadas de {len(polizas_dicts)} procesadas"
+    )
 
 
 @router_importacion.post("/indicadores-axa", response_model=ImportacionResult)

@@ -181,6 +181,27 @@ class Poliza(Base):
     anio_conf = Column(Integer)
     mes_conf = Column(Integer)
 
+    # ── Campos calculados (reglas del AUTOMATICO) ──────────────
+    largo_poliza = Column(Integer)                   # BG: LEN(poliza)
+    raiz_poliza_6 = Column(String(6))               # BH: LEFT(poliza,6)
+    terminacion = Column(String(2))                  # BI: RIGHT(poliza,2)
+    num_reexpediciones = Column(Integer)             # BF: COUNTIF de raíz
+    primer_anio = Column(String(50))                 # BJ: "PRIMER AÑO 2025", etc.
+    id_compuesto = Column(String(60))               # BT: poliza+fecha_inicio
+    fecha_aplicacion = Column(String(10))            # BU/BK: FEC APLI
+    mes_aplicacion = Column(String(20))             # BL: MES APLI (ENERO, etc.)
+    pendientes_pago = Column(String(100))           # BV: etiqueta o ""
+    trimestre = Column(String(20))                  # CA: Q1, Q2, Q3, Q4
+    prima_acumulada_basica = Column(Float)           # CF: SUMIFS prima pagada
+    flag_pagada = Column(Integer)                    # CI: 0/1
+    flag_nueva_formal = Column(Integer)             # CJ: 0/1
+    prima_anual_pesos = Column(Float)               # CM: prima convertida a MXN
+    equivalencias_emitidas = Column(Float)           # CN: EQUIV
+    equivalencias_pagadas = Column(Float)            # CO: EQUIV PAGADA
+    flag_cancelada = Column(Integer)                 # CP: 0/1
+    prima_proporcional = Column(Float)              # CU: prima proporcional al tiempo
+    condicional_prima = Column(String(20))          # CV/CN: "OK"/"Cancelada"
+
     created_at = Column(String(30), default=lambda: datetime.now().isoformat())
     updated_at = Column(String(30), default=lambda: datetime.now().isoformat())
 
