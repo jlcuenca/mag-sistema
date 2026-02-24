@@ -27,21 +27,8 @@ build/
 *.mp4
 *.zip
 
-# ── Permitir carpeta fuentes/ con sus archivos ────────────────────
-!fuentes/
-!fuentes/**
-!fuentes/*.xlsx
-!fuentes/*.xlsm
-!fuentes/*.xlsb
-!fuentes/*.xls
-!fuentes/*.docx
-!fuentes/*.pptx
-
-# ── Archivos >100MB (límite GitHub) ── NO subir ──────────────────
-fuentes/*.mp4
-fuentes/original base*
-fuentes/Reporte 19*
-~$*
+# ── Carpeta fuentes/ (archivos locales, NO subir al repo) ─────────
+fuentes/
 
 # ── Base de datos SQLite ──────────────────────────────────────────
 *.db
