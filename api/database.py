@@ -1,5 +1,6 @@
 """
 Módulo de base de datos: SQLAlchemy + SQLite para MAG Sistema
+v0.2.0 — Modelo enriquecido con datos del Reporte Cubo 2025
 """
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, Boolean,
@@ -27,7 +28,22 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
-# ── Modelos ────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════
+# CATÁLOGOS
+# ══════════════════════════════════════════════════════════════════
+
+class Segmento(Base):
+    """Segmentos comerciales (ALFA TOP INTEGRAL, BETA1, OMEGA, etc.)"""
+    __tablename__ = "segmentos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(50), unique=True, nullable=False)   # 'ALFA TOP INTEGRAL'
+    agrupado = Column(String(20), nullable=False)               # 'ALFA'
+    orden = Column(Integer, default=0)
+
+    agentes = relationship("Agente", back_populates="segmento_rel")
+
+
 class Agente(Base):
     __tablename__ = "agentes"
 
@@ -46,10 +62,21 @@ class Agente(Base):
     centro_costos = Column(String(20))
     telefono = Column(String(20))
     email = Column(String(200))
+
+    # ── Campos nuevos (Reporte Cubo / VISTAS CUITLAHUAC) ──
+    segmento_id = Column(Integer, ForeignKey("segmentos.id"))
+    segmento_nombre = Column(String(50))        # Texto directo: 'ALFA TOP INTEGRAL'
+    segmento_agrupado = Column(String(20))      # 'ALFA', 'BETA', 'OMEGA'
+    gestion_comercial = Column(String(100))     # 'ALFA/MARIA ESTHER', 'MARIO FLORES'
+    lider_codigo = Column(String(20))           # Código del líder: '63931'
+    estado = Column(String(30))                 # 'ACTIVO', '0' (dato interno AXA)
+    asociado = Column(String(100))              # Asociación territorial
+
     created_at = Column(String(30), default=lambda: datetime.now().isoformat())
     updated_at = Column(String(30), default=lambda: datetime.now().isoformat())
 
     polizas = relationship("Poliza", back_populates="agente")
+    segmento_rel = relationship("Segmento", back_populates="agentes")
 
 
 class Producto(Base):
@@ -66,6 +93,10 @@ class Producto(Base):
 
     polizas = relationship("Poliza", back_populates="producto")
 
+
+# ══════════════════════════════════════════════════════════════════
+# TABLA PRINCIPAL DE PÓLIZAS
+# ══════════════════════════════════════════════════════════════════
 
 class Poliza(Base):
     __tablename__ = "polizas"
@@ -125,12 +156,81 @@ class Poliza(Base):
     anio_aplicacion = Column(Integer)
     fuente = Column(String(50), default="EXCEL_IMPORT")
     notas = Column(Text)
+
+    # ── Campos nuevos (Reporte Cubo 2025) ──────────────────────
+    segmento = Column(String(50))               # 'ALFA TOP INTEGRAL', 'OMEGA', etc.
+    gestion_comercial = Column(String(100))     # 'ALFA/MARIA ESTHER'
+    lider_codigo = Column(String(20))           # '63931'
+    clasificacion_cy = Column(String(30))       # 'CY SUBSECUENTE', 'CY ANUAL'
+    estatus_cubo = Column(String(50))           # 'POLIZA PAGADA', 'POLIZA AL CORRIENTE', etc.
+    estatus_detalle = Column(String(100))       # 'FALTA DE PAGO', 'NO TOMADA', etc.
+    nueva_poliza_flag = Column(Integer)         # 1 = nueva (flag del Cubo)
+
+    # Primas multi-métrica
+    neta_total_contrato = Column(Float)         # Prima neta total del contrato
+    neta_acumulada = Column(Float)              # Prima neta acumulada pagada
+    neta_forma_pago = Column(Float)             # Prima neta según forma de pago
+    neta_sin_forma = Column(Float)              # Prima neta sin ajuste de forma de pago
+    neta_cancelacion = Column(Float)            # Prima con impacto de cancelación
+
+    # Fechas adicionales de cobranza
+    fecha_primer_pago = Column(String(10))
+    fecha_ultimo_pago = Column(String(10))
+
+    # Período de confirmación
+    anio_conf = Column(Integer)
+    mes_conf = Column(Integer)
+
     created_at = Column(String(30), default=lambda: datetime.now().isoformat())
     updated_at = Column(String(30), default=lambda: datetime.now().isoformat())
 
     agente = relationship("Agente", back_populates="polizas")
     producto = relationship("Producto", back_populates="polizas")
+    recibos = relationship("Recibo", back_populates="poliza")
 
+
+# ══════════════════════════════════════════════════════════════════
+# RECIBOS (granularidad a nivel pago — Hoja DETALLE del Cubo)
+# ══════════════════════════════════════════════════════════════════
+
+class Recibo(Base):
+    __tablename__ = "recibos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    poliza_id = Column(Integer, ForeignKey("polizas.id"))
+    poliza_numero = Column(String(30))          # Número de póliza (para cruces)
+
+    # Datos del recibo
+    fecha_recibo = Column(String(10))
+    anio_apli = Column(Integer)
+    mes_conf = Column(Integer)
+    anio_conf = Column(Integer)
+    comprobante = Column(String(30))            # 'DS175679'
+
+    # Primas del recibo
+    neta_acumulada = Column(Float)
+    neta_forma_pago = Column(Float)
+    neta_sin_forma = Column(Float)
+    neta_cancelacion = Column(Float)
+
+    # Contexto (desnormalizado para reportes rápidos)
+    agente_codigo = Column(String(20))
+    nombre_agente = Column(String(200))
+    ramo = Column(Integer)
+    plan = Column(String(100))
+    segmento = Column(String(50))
+    contratante = Column(String(200))
+    estatus = Column(String(50))
+    estatus_detalle = Column(String(100))
+
+    created_at = Column(String(30), default=lambda: datetime.now().isoformat())
+
+    poliza = relationship("Poliza", back_populates="recibos")
+
+
+# ══════════════════════════════════════════════════════════════════
+# INDICADORES AXA
+# ══════════════════════════════════════════════════════════════════
 
 class IndicadorAxa(Base):
     __tablename__ = "indicadores_axa"

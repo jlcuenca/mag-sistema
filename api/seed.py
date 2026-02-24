@@ -3,7 +3,7 @@ Seed de datos de demostración para MAG Sistema.
 Se ejecuta al iniciar la app si la base de datos está vacía.
 """
 from sqlalchemy.orm import Session
-from .database import SessionLocal, Agente, Producto, Poliza, IndicadorAxa, Meta
+from .database import SessionLocal, Agente, Producto, Poliza, IndicadorAxa, Meta, Segmento, Recibo
 from datetime import datetime
 
 AGENTES_DEMO = [

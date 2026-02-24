@@ -1,10 +1,52 @@
 # 📊 Reporte de Avances — Sistema MAG
 **Promotoría de Seguros AXA — Ramos Vida Individual y GMM Individual**
 
-**Fecha:** 23 de febrero de 2026  
-**Estado general:** 🟢 MVP funcional corriendo en producción local
+**Fecha:** 24 de febrero de 2026  
+**Estado general:** 🟢 MVP con datos reales de producción (993 pólizas, 140 agentes)
 
 ---
+
+## ✅ Sesión del 24 de Febrero 2026
+
+### Fase 0: Importación de Datos Reales del Reporte Cubo 2025
+
+**Análisis del folder `fuentes/` completado** — 7 archivos analizados:
+- `DASHBOARD PRIMAS INGRESOS VS EGRESOS.pptx` — Reveló necesidad de módulo financiero
+- `MIGGO.pptx` — Sistema de referencia con 7 módulos (blueprint funcional)
+- `Reporte_Cubo_2025_ALL (3).xlsx` — **993 pólizas reales** importadas
+- `EJEMPLO ESTATUS.xlsx` — Catálogo de 6 estatus implementado
+- `VISTAS.xlsx` / `VISTAS CUITLAHUAC.xlsx` — Diseño de dashboards ejecutivos
+
+**Cambios al modelo de datos (`database.py` v0.2.0):**
+- Tabla `segmentos` — 8 segmentos comerciales (ALFA TOP/INTEGRAL/COMBINADO, BETA1/2, OMEGA)
+- Tabla `recibos` — 2,550 registros a nivel pago (del Cubo DETALLE)
+- 15 campos nuevos en `polizas` (segmento, estatus_cubo, clasificacion_cy, 5 métricas de prima, etc.)
+- 6 campos nuevos en `agentes` (segmento_nombre, gestion_comercial, lider_codigo, etc.)
+
+**Motor de reglas (`rules.py` v0.2.0):**
+- Catálogo de 6 estatus reales (Pendiente, No Tomada, Al Corriente, Atrasada, Cancelada, Rehabilitada)
+- Función `agrupar_segmento()` — ALFA/BETA/OMEGA
+- Función `clasificar_cy()` — CY SUBSECUENTE / CY ANUAL
+- `calcular_mystatus()` actualizado para estatus del Cubo
+
+**Importador (`importar_cubo.py`):**
+- Lee las 3 hojas (RESUMEN→Agentes, GENERAL→Pólizas, DETALLE→Recibos)
+- 140 agentes, 993 pólizas, 2,550 recibos cargados con 0 errores
+- Prima neta total: $29,250,513.59
+
+**`ROADMAP_MEJORA.md` creado** — 19 gaps identificados, 6 fases planificadas
+
+**Datos en BD:**
+| Tabla | Registros |
+|-------|-----------|
+| Agentes | 140 |
+| Pólizas | 993 (793 nuevas, 200 subsecuentes) |
+| Recibos | 2,550 |
+| Segmentos | 8 |
+| Productos | 2 (GMM, VIDA) |
+
+---
+
 
 ## ✅ Sesión del 23 de Febrero 2026
 

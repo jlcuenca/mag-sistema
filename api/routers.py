@@ -9,7 +9,7 @@ import pandas as pd
 import io, os, re
 from collections import defaultdict
 
-from .database import get_db, Agente, Poliza, Producto, IndicadorAxa, Meta, Importacion
+from .database import get_db, Agente, Poliza, Producto, IndicadorAxa, Meta, Importacion, Segmento, Recibo, Conciliacion
 from .schemas import (
     AgenteOut, AgenteCreate,
     PolizaOut, PolizaCreate, PolizaListResponse,
@@ -17,7 +17,7 @@ from .schemas import (
     ConciliacionResponse, ResumenConciliacion, ItemConciliacion,
     ImportacionResult
 )
-from .rules import normalizar_poliza, calcular_mystatus, es_reexpedicion
+from .rules import normalizar_poliza, calcular_mystatus, es_reexpedicion, agrupar_segmento, clasificar_cy
 
 # ═══════════════════════════════════════════════════════════════════
 # DASHBOARD
@@ -36,7 +36,8 @@ def get_dashboard(
     polizas = db.execute(text("""
         SELECT p.*, pr.ramo_codigo, pr.ramo_nombre, pr.plan,
                a.nombre_completo as agente_nombre, a.codigo_agente,
-               a.oficina, a.gerencia, a.territorio
+               a.oficina, a.gerencia, a.territorio,
+               a.segmento_nombre, a.segmento_agrupado
         FROM polizas p
         LEFT JOIN productos pr ON p.producto_id = pr.id
         LEFT JOIN agentes a ON p.agente_id = a.id
@@ -48,7 +49,7 @@ def get_dashboard(
     nuevas_gmm   = [p for p in polizas if p["ramo_codigo"]==34 and p["tipo_poliza"]=="NUEVA"]
     subs_vida    = [p for p in polizas if p["ramo_codigo"]==11 and p["tipo_poliza"]=="SUBSECUENTE"]
     subs_gmm     = [p for p in polizas if p["ramo_codigo"]==34 and p["tipo_poliza"]=="SUBSECUENTE"]
-    canceladas   = [p for p in polizas if p["status_recibo"] != "PAGADA"]
+    canceladas   = [p for p in polizas if p["status_recibo"] not in ("PAGADA", "AL CORRIENTE", None)]
 
     meta = db.execute(text("SELECT * FROM metas WHERE anio=:a AND periodo IS NULL"), {"a": anio}).mappings().first()
 
@@ -95,6 +96,7 @@ def get_dashboard(
     # ── Top agentes ──
     top_raw = db.execute(text("""
         SELECT a.nombre_completo, a.codigo_agente, a.oficina,
+               a.segmento_nombre as segmento,
                COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) as polizas_nuevas,
                SUM(CASE WHEN p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_total
         FROM polizas p
@@ -110,6 +112,7 @@ def get_dashboard(
             nombre_completo=r["nombre_completo"],
             codigo_agente=r["codigo_agente"],
             oficina=r["oficina"],
+            segmento=r["segmento"],
             polizas_nuevas=r["polizas_nuevas"] or 0,
             prima_total=round(r["prima_total"] or 0, 2),
         ) for r in top_raw

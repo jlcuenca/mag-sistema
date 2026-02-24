@@ -84,6 +84,16 @@ class PolizaOut(PolizaBase):
     ramo_codigo: Optional[int] = None
     ramo_nombre: Optional[str] = None
     plan: Optional[str] = None
+    # Campos nuevos del Reporte Cubo
+    segmento: Optional[str] = None
+    gestion_comercial: Optional[str] = None
+    clasificacion_cy: Optional[str] = None
+    estatus_cubo: Optional[str] = None
+    estatus_detalle: Optional[str] = None
+    contratante_nombre: Optional[str] = None
+    neta_total_contrato: Optional[float] = None
+    neta_acumulada: Optional[float] = None
+    neta_forma_pago: Optional[float] = None
 
     model_config = {"from_attributes": True}
 
@@ -125,6 +135,7 @@ class TopAgente(BaseModel):
     nombre_completo: Optional[str] = None
     codigo_agente: Optional[str] = None
     oficina: Optional[str] = None
+    segmento: Optional[str] = None
     polizas_nuevas: int = 0
     prima_total: float = 0
 

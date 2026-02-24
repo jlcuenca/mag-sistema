@@ -23,7 +23,10 @@ build/
 *.docx
 *.doc
 *.pdf
+*.pptx
+*.mp4
 *.zip
+fuentes/
 
 # ── Base de datos SQLite ──────────────────────────────────────────
 *.db
