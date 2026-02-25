@@ -2,13 +2,39 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 
-const navItems = [
-    { href: '/dashboard', icon: '📊', label: 'Dashboard' },
-    { href: '/polizas', icon: '📋', label: 'Pólizas' },
-    { href: '/agentes', icon: '👥', label: 'Agentes' },
-    { href: '/conciliacion', icon: '🔄', label: 'Conciliación AXA' },
-    { href: '/produccion', icon: '📈', label: 'Producción Histórica' },
-    { href: '/cartera', icon: '💼', label: 'Cartera' },
+const navSections = [
+    {
+        title: 'Principal',
+        items: [
+            { href: '/dashboard', icon: '📊', label: 'Dashboard' },
+            { href: '/ejecutivo', icon: '🏛️', label: 'Vista Ejecutiva' },
+            { href: '/finanzas', icon: '💰', label: 'Finanzas' },
+            { href: '/cobranza', icon: '💳', label: 'Cobranza' },
+        ],
+    },
+    {
+        title: 'Operación',
+        items: [
+            { href: '/polizas', icon: '📋', label: 'Pólizas' },
+            { href: '/agentes', icon: '👥', label: 'Agentes' },
+            { href: '/contratantes', icon: '🧑‍💼', label: 'Contratantes' },
+            { href: '/solicitudes', icon: '📝', label: 'Solicitudes' },
+        ],
+    },
+    {
+        title: 'Análisis',
+        items: [
+            { href: '/conciliacion', icon: '🔄', label: 'Conciliación AXA' },
+            { href: '/produccion', icon: '📈', label: 'Producción Histórica' },
+            { href: '/cartera', icon: '💼', label: 'Cartera' },
+        ],
+    },
+    {
+        title: 'Sistema',
+        items: [
+            { href: '/configuracion', icon: '⚙️', label: 'Configuración' },
+        ],
+    },
 ];
 
 export default function Sidebar() {
@@ -25,20 +51,16 @@ export default function Sidebar() {
             </div>
 
             <nav className="sidebar-nav">
-                <div className="nav-section-title">Principal</div>
-                {navItems.slice(0, 4).map(item => (
-                    <Link key={item.href} href={item.href} className={`nav-item ${pathname === item.href ? 'active' : ''}`}>
-                        <span className="nav-item-icon">{item.icon}</span>
-                        {item.label}
-                    </Link>
-                ))}
-
-                <div className="nav-section-title">Análisis</div>
-                {navItems.slice(4).map(item => (
-                    <Link key={item.href} href={item.href} className={`nav-item ${pathname === item.href ? 'active' : ''}`}>
-                        <span className="nav-item-icon">{item.icon}</span>
-                        {item.label}
-                    </Link>
+                {navSections.map(section => (
+                    <div key={section.title}>
+                        <div className="nav-section-title">{section.title}</div>
+                        {section.items.map(item => (
+                            <Link key={item.href} href={item.href} className={`nav-item ${pathname === item.href ? 'active' : ''}`}>
+                                <span className="nav-item-icon">{item.icon}</span>
+                                {item.label}
+                            </Link>
+                        ))}
+                    </div>
                 ))}
             </nav>
 

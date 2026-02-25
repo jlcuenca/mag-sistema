@@ -71,12 +71,14 @@ class Agente(Base):
     lider_codigo = Column(String(20))           # Código del líder: '63931'
     estado = Column(String(30))                 # 'ACTIVO', '0' (dato interno AXA)
     asociado = Column(String(100))              # Asociación territorial
+    gestion_id = Column(Integer, ForeignKey("gestiones_comerciales.id"))  # FK Fase 3.5
 
     created_at = Column(String(30), default=lambda: datetime.now().isoformat())
     updated_at = Column(String(30), default=lambda: datetime.now().isoformat())
 
     polizas = relationship("Poliza", back_populates="agente")
     segmento_rel = relationship("Segmento", back_populates="agentes")
+    gestion_rel = relationship("GestionComercial", back_populates="agentes")
 
 
 class Producto(Base):
@@ -202,12 +204,16 @@ class Poliza(Base):
     prima_proporcional = Column(Float)              # CU: prima proporcional al tiempo
     condicional_prima = Column(String(20))          # CV/CN: "OK"/"Cancelada"
 
+    # ── Fase 5.1: Link to Contratante ──
+    contratante_id = Column(Integer, ForeignKey("contratantes.id"))
+
     created_at = Column(String(30), default=lambda: datetime.now().isoformat())
     updated_at = Column(String(30), default=lambda: datetime.now().isoformat())
 
     agente = relationship("Agente", back_populates="polizas")
     producto = relationship("Producto", back_populates="polizas")
     recibos = relationship("Recibo", back_populates="poliza")
+    contratante_rel = relationship("Contratante", back_populates="polizas")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -293,6 +299,55 @@ class Conciliacion(Base):
     created_at = Column(String(30), default=lambda: datetime.now().isoformat())
 
 
+class GestionComercial(Base):
+    """Gestiones comerciales — líderes y asignación de agentes (Fase 3.5)"""
+    __tablename__ = "gestiones_comerciales"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(100), unique=True, nullable=False)   # 'ALFA/MARIA ESTHER'
+    lider_codigo = Column(String(20))                            # '63931'
+    lider_nombre = Column(String(200))
+    tipo = Column(String(30))                                    # 'ALFA', 'BETA', 'OMEGA', 'DIRECTA'
+    activa = Column(Boolean, default=True)
+    num_agentes = Column(Integer, default=0)
+    meta_anual_vida = Column(Float, default=0)
+    meta_anual_gmm = Column(Float, default=0)
+    notas = Column(Text)
+    created_at = Column(String(30), default=lambda: datetime.now().isoformat())
+
+    agentes = relationship("Agente", back_populates="gestion_rel")
+
+
+class Presupuesto(Base):
+    """Presupuestos mensuales/anuales por ramo y agente (Fase 3.4)"""
+    __tablename__ = "presupuestos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    anio = Column(Integer, nullable=False)
+    periodo = Column(String(7))                    # NULL=anual, '2026-01'=mensual
+    ramo = Column(String(10))                      # 'VIDA', 'GMM', NULL=total
+    agente_id = Column(Integer, ForeignKey("agentes.id"))
+    gestion_id = Column(Integer, ForeignKey("gestiones_comerciales.id"))
+
+    meta_polizas = Column(Integer, default=0)
+    meta_equivalentes = Column(Float, default=0)
+    meta_asegurados = Column(Integer, default=0)
+    meta_prima_nueva = Column(Float, default=0)
+    meta_prima_subsecuente = Column(Float, default=0)
+    meta_prima_total = Column(Float, default=0)
+
+    real_polizas = Column(Integer, default=0)
+    real_equivalentes = Column(Float, default=0)
+    real_asegurados = Column(Integer, default=0)
+    real_prima_nueva = Column(Float, default=0)
+    real_prima_subsecuente = Column(Float, default=0)
+    real_prima_total = Column(Float, default=0)
+
+    variacion_pct = Column(Float, default=0)       # (real-meta)/meta * 100
+    created_at = Column(String(30), default=lambda: datetime.now().isoformat())
+    updated_at = Column(String(30), default=lambda: datetime.now().isoformat())
+
+
 class Meta(Base):
     __tablename__ = "metas"
 
@@ -301,10 +356,17 @@ class Meta(Base):
     periodo = Column(String(7))
     agente_id = Column(Integer, ForeignKey("agentes.id"))
     meta_polizas_vida = Column(Integer)
+    meta_equiv_vida = Column(Float)                # Equivalentes Vida (3.3)
     meta_prima_vida = Column(Float)
     meta_polizas_gmm = Column(Integer)
     meta_asegurados_gmm = Column(Integer)
     meta_prima_gmm = Column(Float)
+    # Faltantes calculados (3.3)
+    faltante_polizas_vida = Column(Integer)
+    faltante_equiv_vida = Column(Float)
+    faltante_prima_vida = Column(Float)
+    faltante_polizas_gmm = Column(Integer)
+    faltante_prima_gmm = Column(Float)
     created_at = Column(String(30), default=lambda: datetime.now().isoformat())
 
 
@@ -321,6 +383,83 @@ class Importacion(Base):
     errores_detalle = Column(Text)
     usuario = Column(String(100))
     created_at = Column(String(30), default=lambda: datetime.now().isoformat())
+
+
+# ── Contratante (Fase 5.1) ──────────────────────────────────────
+class Contratante(Base):
+    __tablename__ = "contratantes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(200), nullable=False)
+    rfc = Column(String(20))
+    telefono = Column(String(20))
+    email = Column(String(200))
+    domicilio = Column(Text)
+    notas = Column(Text)
+    referido_por_id = Column(Integer, ForeignKey("contratantes.id"))
+    agente_id = Column(Integer, ForeignKey("agentes.id"))       # Agente asignado
+
+    created_at = Column(String(30), default=lambda: datetime.now().isoformat())
+    updated_at = Column(String(30), default=lambda: datetime.now().isoformat())
+
+    # Self-referencing: quién lo refirió
+    referidos = relationship("Contratante", backref="referido_por", remote_side=[id])
+    polizas = relationship("Poliza", back_populates="contratante_rel")
+    solicitudes = relationship("Solicitud", back_populates="contratante_rel")
+
+
+# ── Solicitud (Fase 5.2) ────────────────────────────────────────
+class Solicitud(Base):
+    __tablename__ = "solicitudes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    folio = Column(String(30), unique=True)
+    agente_id = Column(Integer, ForeignKey("agentes.id"))
+    contratante_id = Column(Integer, ForeignKey("contratantes.id"))
+    poliza_id = Column(Integer, ForeignKey("polizas.id"))       # Una vez emitida
+    ramo = Column(String(100))
+    plan = Column(String(100))
+    suma_asegurada = Column(Float)
+    prima_estimada = Column(Float)
+    estado = Column(String(30), default="TRAMITE")              # TRAMITE, EMITIDA, PAGADA, RECHAZADA, CANCELADA
+    fecha_solicitud = Column(String(10))
+    fecha_emision = Column(String(10))
+    fecha_pago = Column(String(10))
+    notas = Column(Text)
+
+    created_at = Column(String(30), default=lambda: datetime.now().isoformat())
+    updated_at = Column(String(30), default=lambda: datetime.now().isoformat())
+
+    contratante_rel = relationship("Contratante", back_populates="solicitudes")
+
+
+# ── Distribución de Comisiones (Fase 5.3) ────────────────────────
+class DistribucionComision(Base):
+    __tablename__ = "distribuciones_comision"
+
+    id = Column(Integer, primary_key=True, index=True)
+    agente_id = Column(Integer, ForeignKey("agentes.id"), nullable=False)
+    sub_agente_id = Column(Integer, ForeignKey("agentes.id"))
+    nombre_beneficiario = Column(String(200))                   # Si no es agente formal
+    porcentaje = Column(Float, nullable=False)                  # 0-100
+    ramo = Column(String(100))                                  # NULL=todos, 'VIDA', 'GMM'
+    tipo = Column(String(30), default="SUBAGENTE")              # SUBAGENTE, VENDEDOR, PROMOTOR
+    activo = Column(Integer, default=1)
+
+    created_at = Column(String(30), default=lambda: datetime.now().isoformat())
+
+
+# ── Configuración Dinámica (Fase 5.5) ───────────────────────────
+class Configuracion(Base):
+    __tablename__ = "configuraciones"
+
+    id = Column(Integer, primary_key=True, index=True)
+    clave = Column(String(100), unique=True, nullable=False)
+    valor = Column(Text)
+    tipo = Column(String(20), default="texto")                  # texto, numero, json, booleano
+    grupo = Column(String(50))                                  # umbrales, tipos_cambio, catalogos
+    descripcion = Column(String(300))
+    updated_at = Column(String(30), default=lambda: datetime.now().isoformat())
 
 
 # ── Dependency ─────────────────────────────────────────────────────

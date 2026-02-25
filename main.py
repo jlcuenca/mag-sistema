@@ -16,6 +16,12 @@ from api.routers import (
     router_conciliacion,
     router_importacion,
     router_exportacion,
+    router_cobranza,
+    router_finanzas,
+    router_contratantes,
+    router_solicitudes,
+    router_comisiones,
+    router_configuracion,
 )
 
 IS_DEMO = os.getenv("DEMO_MODE", "true").lower() == "true"
@@ -65,6 +71,12 @@ app.include_router(router_dashboard)
 app.include_router(router_polizas)
 app.include_router(router_agentes)
 app.include_router(router_conciliacion)
+app.include_router(router_cobranza)
+app.include_router(router_finanzas)
+app.include_router(router_contratantes)
+app.include_router(router_solicitudes)
+app.include_router(router_comisiones)
+app.include_router(router_configuracion)
 app.include_router(router_importacion)
 app.include_router(router_exportacion)
 

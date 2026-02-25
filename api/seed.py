@@ -3,7 +3,11 @@ Seed de datos de demostración para MAG Sistema.
 Se ejecuta al iniciar la app si la base de datos está vacía.
 """
 from sqlalchemy.orm import Session
-from .database import SessionLocal, Agente, Producto, Poliza, IndicadorAxa, Meta, Segmento, Recibo
+from .database import (
+    SessionLocal, Agente, Producto, Poliza, IndicadorAxa, Meta,
+    Segmento, Recibo, GestionComercial, Presupuesto,
+    Contratante, Solicitud, Configuracion,
+)
 from datetime import datetime
 
 AGENTES_DEMO = [
@@ -28,9 +32,41 @@ PRODUCTOS_DEMO = [
 ]
 
 METAS_DEMO = [
-    {"anio": 2025, "periodo": None, "meta_polizas_vida": 48, "meta_prima_vida": 1_440_000, "meta_polizas_gmm": 240, "meta_asegurados_gmm": 600, "meta_prima_gmm": 5_760_000},
-    {"anio": 2025, "periodo": "2025-01", "meta_polizas_vida": 4, "meta_prima_vida": 120_000, "meta_polizas_gmm": 20, "meta_asegurados_gmm": 50, "meta_prima_gmm": 480_000},
+    {"anio": 2025, "periodo": None, "meta_polizas_vida": 48, "meta_equiv_vida": 64.0, "meta_prima_vida": 1_440_000, "meta_polizas_gmm": 240, "meta_asegurados_gmm": 600, "meta_prima_gmm": 5_760_000},
+    {"anio": 2025, "periodo": "2025-01", "meta_polizas_vida": 4, "meta_equiv_vida": 5.3, "meta_prima_vida": 120_000, "meta_polizas_gmm": 20, "meta_asegurados_gmm": 50, "meta_prima_gmm": 480_000},
 ]
+
+# Catálogo completo de segmentos (Fase 3.2)
+SEGMENTOS_DEMO = [
+    {"nombre": "ALFA TOP INTEGRAL",  "agrupado": "ALFA",  "orden": 1},
+    {"nombre": "ALFA TOP COMBINADO", "agrupado": "ALFA",  "orden": 2},
+    {"nombre": "ALFA TOP",           "agrupado": "ALFA",  "orden": 3},
+    {"nombre": "ALFA INTEGRAL",      "agrupado": "ALFA",  "orden": 4},
+    {"nombre": "ALFA/BETA",          "agrupado": "ALFA",  "orden": 5},
+    {"nombre": "BETA1",              "agrupado": "BETA",  "orden": 6},
+    {"nombre": "BETA2",              "agrupado": "BETA",  "orden": 7},
+    {"nombre": "OMEGA",              "agrupado": "OMEGA", "orden": 8},
+]
+
+# Gestiones comerciales (Fase 3.5)
+GESTIONES_DEMO = [
+    {"nombre": "ALFA/MARIA ESTHER",   "lider_codigo": "63931", "lider_nombre": "MARÍA ESTHER LUNA",   "tipo": "ALFA"},
+    {"nombre": "MARIO FLORES",        "lider_codigo": "63931", "lider_nombre": "MARIO FLORES",         "tipo": "BETA"},
+    {"nombre": "DIRECTA/PROMOTORA",   "lider_codigo": "63931", "lider_nombre": "MAG PROMOTORIA",       "tipo": "DIRECTA"},
+]
+
+# Asignación de segmentos y gestiones a agentes demo
+AGENTE_SEGMENTOS = {
+    "47968":  {"segmento_nombre": "ALFA TOP INTEGRAL",  "segmento_agrupado": "ALFA",  "gestion_comercial": "ALFA/MARIA ESTHER"},
+    "627523": {"segmento_nombre": "BETA1",              "segmento_agrupado": "BETA",  "gestion_comercial": "MARIO FLORES"},
+    "385201": {"segmento_nombre": "OMEGA",              "segmento_agrupado": "OMEGA", "gestion_comercial": "DIRECTA/PROMOTORA"},
+    "492011": {"segmento_nombre": "ALFA INTEGRAL",      "segmento_agrupado": "ALFA",  "gestion_comercial": "ALFA/MARIA ESTHER"},
+    "731804": {"segmento_nombre": "BETA2",              "segmento_agrupado": "BETA",  "gestion_comercial": "MARIO FLORES"},
+    "203847": {"segmento_nombre": "OMEGA",              "segmento_agrupado": "OMEGA", "gestion_comercial": "DIRECTA/PROMOTORA"},
+    "918273": {"segmento_nombre": "ALFA TOP COMBINADO", "segmento_agrupado": "ALFA",  "gestion_comercial": "ALFA/MARIA ESTHER"},
+    "564738": {"segmento_nombre": "BETA1",              "segmento_agrupado": "BETA",  "gestion_comercial": "MARIO FLORES"},
+}
+
 
 
 def _fake_polizas(agente_ids: list[int], prod_ids_vida: list[int], prod_ids_gmm_map: dict) -> list[dict]:
@@ -90,7 +126,7 @@ def _fake_polizas(agente_ids: list[int], prod_ids_vida: list[int], prod_ids_gmm_
                     "tipo_poliza": tipo if status == "PAGADA" else "NUEVA",
                     "tipo_prima": None,
                     "es_nueva": tipo == "NUEVA" and status == "PAGADA",
-                    "mystatus": "PAGADA TOTAL" if status == "PAGADA" else "CANCELADA CADUCADA",
+                    "mystatus": "PAGADA" if status == "PAGADA" else "CANCELADA CADUCADA",
                     "periodo_aplicacion": f"{anio}-{mes:02d}",
                     "anio_aplicacion": anio,
                     "fuente": "EXCEL_IMPORT",
@@ -131,7 +167,7 @@ def _fake_polizas(agente_ids: list[int], prod_ids_vida: list[int], prod_ids_gmm_
                 "tipo_prima": "BASICA",
                 "pct_comision": 0.025,
                 "es_nueva": tipo == "NUEVA",
-                "mystatus": "PAGADA TOTAL",
+                "mystatus": "PAGADA",
                 "periodo_aplicacion": f"{anio}-{mes:02d}",
                 "anio_aplicacion": anio,
                 "fuente": "EXCEL_IMPORT",
@@ -148,11 +184,40 @@ def seed_demo(db: Session) -> bool:
 
     print("[SEED] Inicializando datos de demostración...")
 
-    # Agentes
+    # ── Segmentos (Fase 3.2) ──
+    segmentos_map = {}
+    for s in SEGMENTOS_DEMO:
+        seg = Segmento(**s)
+        db.add(seg)
+        segmentos_map[s["nombre"]] = seg
+    db.flush()
+
+    # ── Gestiones Comerciales (Fase 3.5) ──
+    gestiones_map = {}
+    for g in GESTIONES_DEMO:
+        gc = GestionComercial(**g)
+        db.add(gc)
+        gestiones_map[g["nombre"]] = gc
+    db.flush()
+
+    # Agentes (con segmentos y gestiones asignados)
     agentes = []
     for a in AGENTES_DEMO:
-        ag = Agente(**{k: v for k, v in a.items() if v is not None},
-                    promotor="MAG Principal", nombre_promotoria="MAG")
+        extra = AGENTE_SEGMENTOS.get(a["codigo_agente"], {})
+        seg_nombre = extra.get("segmento_nombre")
+        gestion_nombre = extra.get("gestion_comercial")
+
+        ag = Agente(
+            **{k: v for k, v in a.items() if v is not None},
+            promotor="MAG Principal", nombre_promotoria="MAG",
+            segmento_nombre=seg_nombre,
+            segmento_agrupado=extra.get("segmento_agrupado"),
+            gestion_comercial=gestion_nombre,
+            lider_codigo="63931",
+            estado="ACTIVO" if a.get("situacion") == "ACTIVO" else "CANCELADO",
+            segmento_id=segmentos_map[seg_nombre].id if seg_nombre and seg_nombre in segmentos_map else None,
+            gestion_id=gestiones_map[gestion_nombre].id if gestion_nombre and gestion_nombre in gestiones_map else None,
+        )
         db.add(ag)
         agentes.append(ag)
     db.flush()
@@ -169,7 +234,7 @@ def seed_demo(db: Session) -> bool:
     prod_gmm_map = {p.gama: p.id for p in productos if p.ramo_codigo == 34 and p.gama}
     agente_ids = [a.id for a in agentes if a.situacion == "ACTIVO"]
 
-    # Metas
+    # Metas (with equiv field)
     for m in METAS_DEMO:
         db.add(Meta(**m))
 
@@ -196,6 +261,82 @@ def seed_demo(db: Session) -> bool:
             num_asegurados=1,
         ))
 
+    # ── Presupuestos de ejemplo (Fase 3.4) ──
+    for ramo_p, meta_total in [("VIDA", 1_440_000), ("GMM", 5_760_000)]:
+        db.add(Presupuesto(
+            anio=2025, periodo=None, ramo=ramo_p,
+            meta_prima_total=meta_total,
+            meta_polizas=48 if ramo_p == "VIDA" else 240,
+            meta_equivalentes=64.0 if ramo_p == "VIDA" else 0,
+            meta_asegurados=0 if ramo_p == "VIDA" else 600,
+        ))
+        for m in range(1, 13):
+            db.add(Presupuesto(
+                anio=2025, periodo=f"2025-{m:02d}", ramo=ramo_p,
+                meta_prima_total=round(meta_total / 12, 2),
+                meta_polizas=4 if ramo_p == "VIDA" else 20,
+                meta_equivalentes=round(64.0 / 12, 2) if ramo_p == "VIDA" else 0,
+                meta_asegurados=0 if ramo_p == "VIDA" else 50,
+            ))
+
+    # Actualizar conteo de agentes por gestión
+    for gc_name, gc in gestiones_map.items():
+        gc.num_agentes = sum(1 for a in agentes if a.gestion_comercial == gc_name)
+
     db.commit()
-    print(f"[SEED] {len(polizas_data)} polizas, {len(agentes)} agentes insertados.")
+
+    # ── Contratantes demo (Fase 5.1) ──
+    contratantes_demo = [
+        {"nombre": "MARTINEZ LOPEZ, CARLOS", "rfc": "MALC780515AAA", "telefono": "5551234567", "email": "carlos.martinez@mail.com", "domicilio": "Av. Reforma 123, CDMX"},
+        {"nombre": "GONZALEZ RUIZ, ANA MARIA", "rfc": "GORA850220BBB", "telefono": "5559876543", "email": "ana.gonzalez@mail.com", "domicilio": "Calle Juárez 456, Guadalajara"},
+        {"nombre": "HERNANDEZ DIAZ, PEDRO", "rfc": "HEDP900101CCC", "telefono": "5554567890", "email": "pedro.hdz@mail.com"},
+        {"nombre": "SANCHEZ VEGA, LAURA", "rfc": "SAVL880315DDD", "telefono": "5552345678"},
+        {"nombre": "RAMIREZ SOTO, JORGE", "rfc": "RASJ920710EEE", "telefono": "5558765432", "email": "jorge.ramirez@mail.com", "domicilio": "Blvd. Avila Camacho 789, Naucalpan"},
+        {"nombre": "FLORES MENDEZ, PATRICIA", "rfc": "FOMP750825FFF", "telefono": "5556789012"},
+    ]
+    contratantes = []
+    for cd in contratantes_demo:
+        c = Contratante(**cd)
+        if len(contratantes) > 0:
+            c.agente_id = agentes[len(contratantes) % len(agentes)].id
+        db.add(c)
+        contratantes.append(c)
+    db.flush()
+    # Referral chain: 3→1, 4→2, 6→5
+    contratantes[2].referido_por_id = contratantes[0].id
+    contratantes[3].referido_por_id = contratantes[1].id
+    contratantes[5].referido_por_id = contratantes[4].id
+    db.flush()
+
+    # ── Solicitudes demo (Fase 5.2) ──
+    solicitudes_demo = [
+        {"folio": "SOL-202501-0001", "agente_id": agentes[0].id, "contratante_id": contratantes[0].id, "ramo": "VIDA", "plan": "Vida y Ahorro", "prima_estimada": 35000, "estado": "PAGADA", "fecha_solicitud": "2025-01-15", "fecha_emision": "2025-01-22", "fecha_pago": "2025-02-01"},
+        {"folio": "SOL-202501-0002", "agente_id": agentes[1].id, "contratante_id": contratantes[1].id, "ramo": "GMM", "plan": "Flex Plus", "prima_estimada": 18500, "estado": "PAGADA", "fecha_solicitud": "2025-01-20", "fecha_emision": "2025-01-28", "fecha_pago": "2025-02-10"},
+        {"folio": "SOL-202502-0001", "agente_id": agentes[2].id, "contratante_id": contratantes[2].id, "ramo": "VIDA", "plan": "Dotal Mixto", "prima_estimada": 42000, "estado": "EMITIDA", "fecha_solicitud": "2025-02-05", "fecha_emision": "2025-02-12"},
+        {"folio": "SOL-202502-0002", "agente_id": agentes[0].id, "contratante_id": contratantes[3].id, "ramo": "GMM", "plan": "Óptima", "prima_estimada": 22000, "estado": "EMITIDA", "fecha_solicitud": "2025-02-10", "fecha_emision": "2025-02-18"},
+        {"folio": "SOL-202502-0003", "agente_id": agentes[3].id, "contratante_id": contratantes[4].id, "ramo": "VIDA", "plan": "Vida y Ahorro Plus", "prima_estimada": 28000, "estado": "TRAMITE", "fecha_solicitud": "2025-02-15"},
+        {"folio": "SOL-202502-0004", "agente_id": agentes[1].id, "contratante_id": contratantes[5].id, "ramo": "GMM", "plan": "Flex Plus Familiar", "prima_estimada": 45000, "estado": "TRAMITE", "fecha_solicitud": "2025-02-18"},
+        {"folio": "SOL-202502-0005", "agente_id": agentes[4].id, "contratante_id": contratantes[0].id, "ramo": "VIDA", "plan": "Temporal 20", "prima_estimada": 15000, "estado": "RECHAZADA", "fecha_solicitud": "2025-02-01", "notas": "Rechazada por historial médico"},
+        {"folio": "SOL-202502-0006", "agente_id": agentes[2].id, "contratante_id": contratantes[1].id, "ramo": "GMM", "plan": "Estándar", "prima_estimada": 12000, "estado": "CANCELADA", "fecha_solicitud": "2025-02-08", "notas": "Cliente desistió"},
+    ]
+    for sd in solicitudes_demo:
+        db.add(Solicitud(**sd))
+
+    # ── Configuraciones default (Fase 5.5) ──
+    configs_default = [
+        {"clave": "umbral_comision_vida", "valor": "0.021", "tipo": "numero", "grupo": "umbrales", "descripcion": "Umbral de comisión Vida BÁSICA (2.1%)"},
+        {"clave": "umbral_comision_excedente", "valor": "0.021", "tipo": "numero", "grupo": "umbrales", "descripcion": "Umbral debajo del cual prima Vida es EXCEDENTE"},
+        {"clave": "tc_udis", "valor": "8.23", "tipo": "numero", "grupo": "tipos_cambio", "descripcion": "Tipo de cambio UDIs a MXN"},
+        {"clave": "tc_usd", "valor": "17.50", "tipo": "numero", "grupo": "tipos_cambio", "descripcion": "Tipo de cambio USD a MXN"},
+        {"clave": "dias_gracia_pago", "valor": "30", "tipo": "numero", "grupo": "umbrales", "descripcion": "Días de gracia para pago pendiente"},
+        {"clave": "meta_trimestral_pct", "valor": "25", "tipo": "numero", "grupo": "umbrales", "descripcion": "% esperado de cumplimiento trimestral"},
+        {"clave": "anio_fiscal", "valor": "2025", "tipo": "numero", "grupo": "general", "descripcion": "Año fiscal del ejercicio actual"},
+        {"clave": "catalogo_segmentos", "valor": '["ALFA TOP INTEGRAL","ALFA TOP COMBINADO","ALFA TOP","ALFA INTEGRAL","ALFA/BETA","BETA1","BETA2","OMEGA"]', "tipo": "json", "grupo": "catalogos", "descripcion": "Catálogo de segmentos comerciales"},
+        {"clave": "catalogo_estatus", "valor": '["PAGADA","AL CORRIENTE","ATRASADA","CANCELADA","PENDIENTE DE PAGO","REHABILITADA"]', "tipo": "json", "grupo": "catalogos", "descripcion": "Catálogo de estatus internos"},
+    ]
+    for cfg in configs_default:
+        db.add(Configuracion(**cfg))
+
+    db.commit()
+    print(f"[SEED] {len(polizas_data)} polizas, {len(agentes)} agentes, {len(SEGMENTOS_DEMO)} segmentos, {len(GESTIONES_DEMO)} gestiones insertados.")
     return True

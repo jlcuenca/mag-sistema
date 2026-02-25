@@ -151,32 +151,112 @@ def extraer_raiz_poliza(num_poliza: str) -> str:
     return match.group(1) if match else num_poliza
 
 
-# ── REGLA 6: MYSTATUS (actualizado con 6 estatus reales) ─────────
-def calcular_mystatus(status_recibo: str, estatus_cubo: str = None, detalle: str = None) -> str:
+# ── REGLA 6: MYSTATUS (Motor Enriquecido — 6 estatus con lógica temporal) ─
+def calcular_mystatus(
+    status_recibo: str,
+    estatus_cubo: str = None,
+    detalle: str = None,
+    fecha_emision: str = None,
+    fecha_inicio: str = None,
+    prima_pagada: float = None,
+    prima_neta: float = None,
+    es_primer_recibo: bool = True,
+) -> str:
     """
-    Calcula el estado interno de una póliza.
-    Ahora usa el catálogo de 6 estatus reales del Reporte Cubo.
+    Motor de estatus enriquecido con lógica temporal de 30 días.
+
+    Catálogo de 6 estatus (EJEMPLO ESTATUS.xlsx):
+      1. PENDIENTE DE PAGO — Emitida, dentro de 30 días de emisión, sin pago
+      2. NO TOMADA — Emitida, sin pago después de 30 días
+      3. AL CORRIENTE — Fracciones vencidas pagadas
+      4. ATRASADA — Dentro de 30 días de un recibo vencido (no el 1ro)
+      5. CANCELADA — No se pagó dentro de 30 días un recibo vencido
+      6. REHABILITADA — Pagada después de 31 días de inicio de vigencia
     """
-    # Si tenemos el estatus del cubo, usarlo directamente
+
+    # ── 1. Si tenemos estatus del Reporte Cubo, usarlo como base ──
     if estatus_cubo:
         mapped = ESTATUS_CUBO_MAP.get(estatus_cubo, "")
         if mapped == "CANCELADA" and detalle:
-            if "FALTA DE PAGO" in detalle.upper():
+            d = detalle.upper()
+            if "FALTA DE PAGO" in d:
                 return "CANCELADA CADUCADA"
-            elif "NO TOMADA" in detalle.upper():
+            elif "NO TOMADA" in d:
                 return "CANCELADA NO TOMADA"
-            elif "SUSTITUCION" in detalle.upper():
-                return "CANCELADA NO TOMADA"
+            elif "SUSTITUCION" in d:
+                return "CANCELADA POR SUSTITUCION"
+            elif "REDUCCION" in d or "AUMENTO" in d:
+                return "CANCELADA POR MODIFICACION"
             return "CANCELADA"
-        return mapped
+        if mapped == "REHABILITADA":
+            return "REHABILITADA"
+        if mapped:
+            return mapped
 
-    # Fallback al mapeo original
+    # ── 2. Lógica temporal basada en fechas ──
+    hoy = date.today()
+
+    if fecha_emision:
+        try:
+            f_emision = datetime.strptime(str(fecha_emision)[:10], "%Y-%m-%d").date()
+            dias_desde_emision = (hoy - f_emision).days
+
+            # Prima recibida vs esperada
+            pagado = prima_pagada or 0
+            esperado = prima_neta or 0
+
+            if pagado <= 0:
+                # Sin ningún pago
+                if dias_desde_emision <= 30:
+                    return "PENDIENTE DE PAGO"
+                else:
+                    return "NO TOMADA"
+
+            if pagado >= esperado > 0:
+                # Pagado completo — verificar si fue tardío
+                if dias_desde_emision > 31 and es_primer_recibo:
+                    return "REHABILITADA"
+                return "PAGADA"
+
+            if 0 < pagado < esperado:
+                # Pago parcial
+                if not es_primer_recibo:
+                    return "ATRASADA"
+                return "AL CORRIENTE"
+
+        except (ValueError, TypeError):
+            pass
+
+    # ── 3. Lógica por fecha inicio (fallback) ──
+    if fecha_inicio:
+        try:
+            f_inicio = datetime.strptime(str(fecha_inicio)[:10], "%Y-%m-%d").date()
+            dias_desde_inicio = (hoy - f_inicio).days
+
+            pagado = prima_pagada or 0
+            if pagado <= 0 and dias_desde_inicio > 30:
+                return "CANCELADA CADUCADA"
+            elif pagado <= 0 and dias_desde_inicio <= 30:
+                return "PENDIENTE DE PAGO"
+        except (ValueError, TypeError):
+            pass
+
+    # ── 4. Fallback al mapeo original de status_recibo ──
     mapping = {
         "CANC/X F.PAGO": "CANCELADA CADUCADA",
         "CANC/X SUSTITUCION": "CANCELADA NO TOMADA",
-        "PAGADA": "PAGADA TOTAL",
+        "CANC/NO TOMADA": "CANCELADA NO TOMADA",
+        "PAGADA": "PAGADA",
+        "AL CORRIENTE": "AL CORRIENTE",
+        "ATRASADA": "ATRASADA",
+        "PENDIENTE": "PENDIENTE DE PAGO",
+        "REHABILITADA": "REHABILITADA",
     }
-    return mapping.get(status_recibo or "", "")
+    sr = (status_recibo or "").strip().upper()
+    for key, val in mapping.items():
+        if key in sr:
+            return val
+    return ""
 
 
 # ── REGLA 7: Normalización del número de póliza ──────────────────
@@ -198,6 +278,67 @@ def agrupar_segmento(segmento: str) -> str:
     if not segmento:
         return "OMEGA"  # default
     return SEGMENTOS.get(segmento.strip().upper(), "OMEGA")
+
+
+# ── REGLA 8: Cadena de renovaciones (Fase 3.1) ──────────────────
+def construir_cadena_renovaciones(polizas: list) -> dict:
+    """
+    Construye la cadena Póliza Madre → Renovación Año X → Renovación Año Y.
+
+    Recibe una lista de dicts con al menos: {poliza, raiz, version, anio, id}
+    Retorna un dict de {poliza_id: poliza_madre_id} para actualizar la BD.
+
+    Lógica: agrupa por raíz de póliza, ordena por año/versión, y enlaza
+    cada póliza a su predecesora inmediata.
+    """
+    from collections import defaultdict
+
+    # Agrupar por raíz
+    grupos = defaultdict(list)
+    for p in polizas:
+        raiz = p.get("raiz") or extraer_raiz_poliza(p.get("poliza", ""))
+        grupos[raiz].append(p)
+
+    cadena = {}
+
+    for raiz, pols in grupos.items():
+        if len(pols) < 2:
+            continue
+
+        # Ordenar por año y luego por versión
+        pols.sort(key=lambda x: (x.get("anio", 0) or 0, x.get("version", 0) or 0))
+
+        # La primera es la madre, cada siguiente apunta a su predecesora
+        for i in range(1, len(pols)):
+            hijo_id = pols[i].get("id")
+            madre_id = pols[i - 1].get("id")
+            if hijo_id and madre_id:
+                cadena[hijo_id] = madre_id
+
+    return cadena
+
+
+# ── REGLA 9: Cálculo de faltantes para metas (Fase 3.3) ──────────
+def calcular_faltantes(
+    meta_polizas: int = 0,
+    meta_equiv: float = 0,
+    meta_prima: float = 0,
+    real_polizas: int = 0,
+    real_equiv: float = 0,
+    real_prima: float = 0,
+) -> dict:
+    """
+    Calcula faltantes = meta - real.
+    Si el real supera la meta, el faltante es 0 (ya se cumplió).
+    """
+    return {
+        "faltante_polizas": max(0, (meta_polizas or 0) - (real_polizas or 0)),
+        "faltante_equiv": max(0, (meta_equiv or 0) - (real_equiv or 0)),
+        "faltante_prima": max(0, (meta_prima or 0) - (real_prima or 0)),
+        "pct_cumplimiento": round(
+            ((real_prima or 0) / meta_prima * 100) if meta_prima and meta_prima > 0 else 0, 1
+        ),
+    }
 
 
 # ── Mapeo de estatus del cubo ────────────────────────────────────

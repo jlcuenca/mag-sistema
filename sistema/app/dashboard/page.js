@@ -109,7 +109,7 @@ export default function Dashboard() {
                             </div>
 
                             {/* Gráficas principales */}
-                            <div className="charts-grid">
+                            <div className="charts-grid-wide">
                                 {/* Producción mensual */}
                                 <div className="card">
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
