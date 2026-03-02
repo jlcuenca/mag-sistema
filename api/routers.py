@@ -2,6 +2,7 @@
 Routers FastAPI para MAG Sistema
 """
 from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func, case
 from typing import Optional, List
@@ -2050,3 +2051,96 @@ def update_configuracion(clave: str, data: ConfiguracionUpdate, db: Session = De
         clave=c.clave, valor=c.valor, tipo=c.tipo,
         grupo=c.grupo, descripcion=c.descripcion,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# PROXY DOCUMENTOS PDF
+# ═══════════════════════════════════════════════════════════════════
+router_documentos = APIRouter(prefix="/documentos", tags=["Documentos"])
+
+# URL base por defecto (se puede sobrescribir desde BD)
+DEFAULT_DOC_BASE = "http://54.184.22.19:7070/cartera-0.1/static/archivos"
+
+
+def _get_doc_base_url(db: Session) -> str:
+    """Lee la URL base de documentos desde configuración, con fallback."""
+    cfg = db.query(Configuracion).filter(Configuracion.clave == "doc_url_base").first()
+    return cfg.valor if cfg and cfg.valor else DEFAULT_DOC_BASE
+
+
+@router_documentos.get("/poliza/{num_poliza}")
+async def proxy_poliza_pdf(num_poliza: str, db: Session = Depends(get_db)):
+    """
+    Proxy para PDFs de pólizas.
+    Descarga el PDF desde el servidor HTTP interno y lo sirve por HTTPS.
+    URL origen: {doc_url_base}/{num_poliza}.pdf
+    """
+    # Validar número de póliza (solo alfanuméricos)
+    clean = re.sub(r'[^a-zA-Z0-9]', '', num_poliza)
+    if not clean:
+        raise HTTPException(400, "Número de póliza inválido")
+
+    base_url = _get_doc_base_url(db)
+    pdf_url = f"{base_url}/{clean}.pdf"
+
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            resp = await client.get(pdf_url)
+
+        if resp.status_code == 404:
+            raise HTTPException(404, f"Documento de póliza '{clean}' no encontrado")
+        if resp.status_code != 200:
+            raise HTTPException(502, f"Error al obtener documento: HTTP {resp.status_code}")
+
+        return StreamingResponse(
+            iter([resp.content]),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'inline; filename="{clean}.pdf"',
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(504, "Timeout al conectar con servidor de documentos")
+    except httpx.ConnectError:
+        raise HTTPException(502, "No se pudo conectar con el servidor de documentos")
+
+
+@router_documentos.get("/solicitud/{num_solicitud}")
+async def proxy_solicitud_pdf(num_solicitud: str, db: Session = Depends(get_db)):
+    """
+    Proxy para PDFs de solicitudes.
+    Descarga el PDF desde el servidor HTTP interno y lo sirve por HTTPS.
+    URL origen: {doc_url_base}/solicitudes/{num_solicitud}.pdf
+    """
+    clean = re.sub(r'[^a-zA-Z0-9]', '', num_solicitud)
+    if not clean:
+        raise HTTPException(400, "Número de solicitud inválido")
+
+    base_url = _get_doc_base_url(db)
+    pdf_url = f"{base_url}/solicitudes/{clean}.pdf"
+
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            resp = await client.get(pdf_url)
+
+        if resp.status_code == 404:
+            raise HTTPException(404, f"Documento de solicitud '{clean}' no encontrado")
+        if resp.status_code != 200:
+            raise HTTPException(502, f"Error al obtener documento: HTTP {resp.status_code}")
+
+        return StreamingResponse(
+            iter([resp.content]),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'inline; filename="solicitud_{clean}.pdf"',
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(504, "Timeout al conectar con servidor de documentos")
+    except httpx.ConnectError:
+        raise HTTPException(502, "No se pudo conectar con el servidor de documentos")
+

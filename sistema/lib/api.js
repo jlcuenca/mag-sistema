@@ -38,28 +38,31 @@ export const MESES = {
 };
 
 /**
- * URLs base para documentos PDF (solicitudes y pólizas).
- * Configurable vía variables de entorno o por defecto al servidor de cartera.
+ * URLs de documentos PDF via proxy del backend.
+ * El backend descarga el PDF desde el servidor HTTP interno y lo sirve por HTTPS,
+ * evitando el error de Mixed Content en el navegador.
+ *
+ * Servidor origen (HTTP): http://54.184.22.19:7070/cartera-0.1/static/archivos/
+ * Proxy backend (HTTPS):  {API_URL}/documentos/poliza/{num} y /documentos/solicitud/{num}
  */
-export const DOC_BASE_URL = process.env.NEXT_PUBLIC_DOC_BASE_URL
-    || 'http://54.184.22.19:7070/cartera-0.1/static/archivos';
 
 /**
- * Construye la URL del PDF de una solicitud.
- * Ej: getSolicitudDocUrl('1715626') → .../solicitudes/1715626.pdf
+ * Construye la URL del PDF de una solicitud via proxy backend.
+ * Ej: getSolicitudDocUrl('1715626') → {API_URL}/documentos/solicitud/1715626
  */
 export function getSolicitudDocUrl(numSolicitud) {
     if (!numSolicitud) return null;
     const num = String(numSolicitud).trim();
-    return `${DOC_BASE_URL}/solicitudes/${num}.pdf`;
+    return `${API_URL}/documentos/solicitud/${num}`;
 }
 
 /**
- * Construye la URL del PDF de una póliza.
- * Ej: getPolizaDocUrl('19715626') → .../19715626.pdf
+ * Construye la URL del PDF de una póliza via proxy backend.
+ * Ej: getPolizaDocUrl('19715626') → {API_URL}/documentos/poliza/19715626
  */
 export function getPolizaDocUrl(numPoliza) {
     if (!numPoliza) return null;
     const num = String(numPoliza).trim();
-    return `${DOC_BASE_URL}/${num}.pdf`;
+    return `${API_URL}/documentos/poliza/${num}`;
 }
+
