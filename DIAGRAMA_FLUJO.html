@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MAG Sistema — Diagrama de Flujo: Insumos → Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Inter', sans-serif;
+    background: #0a0e1a;
+    color: #e0e4ef;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+.header {
+    text-align: center;
+    padding: 40px 20px 20px;
+    background: linear-gradient(135deg, #0a0e1a 0%, #131a2e 100%);
+    border-bottom: 1px solid rgba(99,102,241,0.2);
+}
+.header h1 {
+    font-size: 28px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #818cf8, #06b6d4);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+}
+.header p { color: #64748b; font-size: 14px; }
+
+.diagram {
+    max-width: 1200px;
+    margin: 40px auto;
+    padding: 0 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+/* ── Flow Arrow ── */
+.flow-arrow {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0;
+}
+.flow-arrow .arrow {
+    width: 3px;
+    height: 40px;
+    background: linear-gradient(to bottom, rgba(99,102,241,0.6), rgba(6,182,212,0.6));
+    position: relative;
+}
+.flow-arrow .arrow::after {
+    content: '▼';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #06b6d4;
+    font-size: 12px;
+}
+.flow-arrow .label {
+    position: absolute;
+    left: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 11px;
+    color: #818cf8;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+/* ── Phase Block ── */
+.phase {
+    border-radius: 16px;
+    padding: 24px;
+    position: relative;
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+.phase:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+}
+
+.phase-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 16px;
+}
+.phase-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+}
+.phase-title { font-size: 18px; font-weight: 700; }
+.phase-subtitle { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+.phase-tag {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-weight: 600;
+    margin-left: auto;
+}
+
+/* Cards grid inside phase */
+.cards {
+    display: grid;
+    gap: 10px;
+}
+.card {
+    background: rgba(0,0,0,0.25);
+    border-radius: 10px;
+    padding: 14px 16px;
+    border: 1px solid rgba(255,255,255,0.06);
+    transition: background 0.2s;
+}
+.card:hover { background: rgba(255,255,255,0.05); }
+.card-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.card-detail {
+    font-size: 11px;
+    color: #94a3b8;
+    line-height: 1.5;
+}
+.card-detail code {
+    background: rgba(99,102,241,0.15);
+    color: #a5b4fc;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 10px;
+}
+.card-badge {
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+/* Color themes */
+.phase-input   { background: linear-gradient(135deg, #1a1f35, #1e2640); border: 1px solid rgba(245,158,11,0.25); }
+.phase-input .phase-icon { background: rgba(245,158,11,0.15); }
+.phase-input .phase-title { color: #fbbf24; }
+.phase-input .phase-tag { background: rgba(245,158,11,0.15); color: #fbbf24; }
+.phase-input .cards { grid-template-columns: repeat(3, 1fr); }
+
+.phase-import  { background: linear-gradient(135deg, #1a1f35, #1e2640); border: 1px solid rgba(59,130,246,0.25); }
+.phase-import .phase-icon { background: rgba(59,130,246,0.15); }
+.phase-import .phase-title { color: #60a5fa; }
+.phase-import .phase-tag { background: rgba(59,130,246,0.15); color: #60a5fa; }
+.phase-import .cards { grid-template-columns: repeat(2, 1fr); }
+
+.phase-rules   { background: linear-gradient(135deg, #1a1f35, #1e2640); border: 1px solid rgba(139,92,246,0.25); }
+.phase-rules .phase-icon { background: rgba(139,92,246,0.15); }
+.phase-rules .phase-title { color: #a78bfa; }
+.phase-rules .phase-tag { background: rgba(139,92,246,0.15); color: #a78bfa; }
+.phase-rules .cards { grid-template-columns: repeat(3, 1fr); }
+
+.phase-db      { background: linear-gradient(135deg, #1a1f35, #1e2640); border: 1px solid rgba(16,185,129,0.25); }
+.phase-db .phase-icon { background: rgba(16,185,129,0.15); }
+.phase-db .phase-title { color: #34d399; }
+.phase-db .phase-tag { background: rgba(16,185,129,0.15); color: #34d399; }
+.phase-db .cards { grid-template-columns: repeat(4, 1fr); }
+
+.phase-api     { background: linear-gradient(135deg, #1a1f35, #1e2640); border: 1px solid rgba(6,182,212,0.25); }
+.phase-api .phase-icon { background: rgba(6,182,212,0.15); }
+.phase-api .phase-title { color: #22d3ee; }
+.phase-api .phase-tag { background: rgba(6,182,212,0.15); color: #22d3ee; }
+.phase-api .cards { grid-template-columns: repeat(4, 1fr); }
+
+.phase-front   { background: linear-gradient(135deg, #1a1f35, #1e2640); border: 1px solid rgba(236,72,153,0.25); }
+.phase-front .phase-icon { background: rgba(236,72,153,0.15); }
+.phase-front .phase-title { color: #f472b6; }
+.phase-front .phase-tag { background: rgba(236,72,153,0.15); color: #f472b6; }
+.phase-front .cards { grid-template-columns: repeat(3, 1fr); }
+
+/* Legend */
+.legend {
+    max-width: 1200px;
+    margin: 30px auto 50px;
+    padding: 0 20px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #94a3b8;
+}
+.legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+}
+
+/* Connector labels */
+.connector {
+    text-align: center;
+    padding: 6px 0;
+    position: relative;
+}
+.connector-line {
+    width: 3px;
+    height: 36px;
+    margin: 0 auto;
+    position: relative;
+}
+.connector-label {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 12px;
+    border-radius: 20px;
+    display: inline-block;
+    margin-bottom: 4px;
+}
+
+@media (max-width: 768px) {
+    .phase-input .cards,
+    .phase-import .cards,
+    .phase-rules .cards,
+    .phase-db .cards,
+    .phase-api .cards,
+    .phase-front .cards { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>MAG Sistema — Flujo de Datos</h1>
+    <p>De insumos Excel a dashboards interactivos — Arquitectura completa del procesamiento</p>
+</div>
+
+<div class="diagram">
+
+    <!-- ═══ FASE 1: INSUMOS ═══ -->
+    <div class="phase phase-input" id="insumos">
+        <div class="phase-header">
+            <div class="phase-icon">📥</div>
+            <div>
+                <div class="phase-title">1. INSUMOS (Archivos Excel)</div>
+                <div class="phase-subtitle">Fuentes de datos crudos — Reporte Cubo AXA, pólizas individuales, indicadores</div>
+            </div>
+            <span class="phase-tag">ENTRADA</span>
+        </div>
+        <div class="cards">
+            <div class="card">
+                <div class="card-title">📊 Reporte Cubo 2025 <span class="card-badge" style="background:rgba(245,158,11,0.15);color:#fbbf24;">PRINCIPAL</span></div>
+                <div class="card-detail">
+                    <code>Reporte_Cubo_2025_ALL.xlsx</code><br>
+                    Hoja <code>querys</code>: Pólizas con 50+ columnas<br>
+                    Campos: POLIZA, ASEGURADO, PRIMANETA, STATUS, FECINI, GAMA, SEGMENTO, etc.
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">📋 Indicadores AXA</div>
+                <div class="card-detail">
+                    <code>Indicadores_AXA.xlsx</code><br>
+                    Métricas oficiales de promotoría AXA<br>
+                    Campos: poliza, periodo, prima_primer_anio, es_nueva_axa
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">📄 Tabs AUTOMATICO</div>
+                <div class="card-detail">
+                    Hojas de cálculo Excel con fórmulas<br>
+                    Columnas BG–CW: 20 columnas calculadas<br>
+                    Referencia para <code>rules.py</code>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Arrow -->
+    <div class="connector">
+        <div class="connector-label" style="background:rgba(59,130,246,0.15);color:#60a5fa;">POST /importar/excel-polizas</div>
+        <div class="connector-line" style="background:linear-gradient(to bottom,rgba(245,158,11,0.5),rgba(59,130,246,0.5));"></div>
+    </div>
+
+    <!-- ═══ FASE 2: IMPORTACIÓN ═══ -->
+    <div class="phase phase-import" id="importacion">
+        <div class="phase-header">
+            <div class="phase-icon">⚙️</div>
+            <div>
+                <div class="phase-title">2. IMPORTACIÓN (FastAPI + Pandas)</div>
+                <div class="phase-subtitle">Lectura, validación, normalización y mapeo de columnas Excel → modelo de datos</div>
+            </div>
+            <span class="phase-tag">PROCESAMIENTO</span>
+        </div>
+        <div class="cards">
+            <div class="card">
+                <div class="card-title">📖 Lectura & Mapeo</div>
+                <div class="card-detail">
+                    <code>pd.read_excel()</code> + mapeo de 20+ columnas<br><br>
+                    <strong>COL_MAP:</strong><br>
+                    POLIZA → <code>poliza_original</code><br>
+                    PRIMANETA → <code>prima_neta</code><br>
+                    FECINI → <code>fecha_inicio</code><br>
+                    STATUS → <code>status_recibo</code><br>
+                    AGENTE → lookup <code>agente_id</code><br>
+                    NOMRAMO → lookup <code>producto_id</code>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">🔄 Normalización</div>
+                <div class="card-detail">
+                    <code>normalizar_poliza()</code>: Quita ceros iniciales<br>
+                    <code>poliza_estandar</code>: Versión limpia<br><br>
+                    <strong>Resolución de FKs:</strong><br>
+                    • Busca agente por <code>codigo_agente</code><br>
+                    • Busca producto por <code>ramo + plan + gama</code><br>
+                    • Upsert: si existe → update, si no → insert<br>
+                    • Fechas: normaliza formatos a <code>YYYY-MM-DD</code>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Arrow -->
+    <div class="connector">
+        <div class="connector-label" style="background:rgba(139,92,246,0.15);color:#a78bfa;">POST /importar/aplicar-reglas</div>
+        <div class="connector-line" style="background:linear-gradient(to bottom,rgba(59,130,246,0.5),rgba(139,92,246,0.5));"></div>
+    </div>
+
+    <!-- ═══ FASE 3: MOTOR DE REGLAS ═══ -->
+    <div class="phase phase-rules" id="reglas">
+        <div class="phase-header">
+            <div class="phase-icon">🧮</div>
+            <div>
+                <div class="phase-title">3. MOTOR DE REGLAS (rules.py)</div>
+                <div class="phase-subtitle">9 reglas de negocio + 20 columnas calculadas — Replica exacta del AUTOMATICO Excel</div>
+            </div>
+            <span class="phase-tag">155 TESTS ✓</span>
+        </div>
+        <div class="cards">
+            <div class="card">
+                <div class="card-title">🏷️ Clasificación (R1–R5)</div>
+                <div class="card-detail">
+                    <code>clasificar_poliza()</code>: NUEVA / SUBSECUENTE<br>
+                    → tipo_prima: BASICA / EXCEDENTE (Vida 2.1%)<br>
+                    <code>es_reexpedicion()</code>: terminación ≠ "00"<br>
+                    <code>calcular_mystatus()</code>: 6 estatus enriquecidos<br>
+                    <code>clasificar_cy()</code>: CY ANUAL / SUBSECUENTE
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">📐 Columnas Derivadas (BG–CW)</div>
+                <div class="card-detail">
+                    <code>largo_poliza()</code> → BG<br>
+                    <code>raiz_poliza_6()</code> → BH<br>
+                    <code>terminacion_poliza()</code> → BI<br>
+                    <code>determinar_primer_anio()</code> → BJ<br>
+                    <code>mes_aplicacion()</code> → BL<br>
+                    <code>generar_id_compuesto()</code> → BT<br>
+                    <code>calcular_trimestre()</code> → CA
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">💹 Cálculos Financieros</div>
+                <div class="card-detail">
+                    <code>prima_anual_en_pesos()</code> → CM<br>
+                    ↳ UDIS×8.56, USD×18.38<br>
+                    <code>calcular_equivalencias()</code> → CN<br>
+                    ↳ &lt;16K=0.5, &lt;50K=1, ≥50K=2<br>
+                    <code>prima_proporcional()</code> → CU<br>
+                    <code>condicional_prima()</code> → CV<br>
+                    <code>flag_pagada/nueva/cancelada</code> → CI/CJ/CP
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Arrow -->
+    <div class="connector">
+        <div class="connector-label" style="background:rgba(16,185,129,0.15);color:#34d399;">SQLAlchemy ORM → SQLite</div>
+        <div class="connector-line" style="background:linear-gradient(to bottom,rgba(139,92,246,0.5),rgba(16,185,129,0.5));"></div>
+    </div>
+
+    <!-- ═══ FASE 4: BASE DE DATOS ═══ -->
+    <div class="phase phase-db" id="database">
+        <div class="phase-header">
+            <div class="phase-icon">🗄️</div>
+            <div>
+                <div class="phase-title">4. BASE DE DATOS (SQLite + SQLAlchemy)</div>
+                <div class="phase-subtitle">15 tablas — mag.db — Modelo relacional completo con datos originales y calculados</div>
+            </div>
+            <span class="phase-tag">87 CAMPOS/POLIZA</span>
+        </div>
+        <div class="cards">
+            <div class="card">
+                <div class="card-title">📋 polizas <span class="card-badge" style="background:rgba(16,185,129,0.15);color:#34d399;">PRINCIPAL</span></div>
+                <div class="card-detail">
+                    87 campos totales<br>
+                    • 47 importados<br>
+                    • 20 calculados (rules.py)<br>
+                    • FKs: agente, producto, contratante
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">👤 agentes + segmentos</div>
+                <div class="card-detail">
+                    Catálogo de agentes AXA<br>
+                    Segmentos: ALFA → OMEGA<br>
+                    Gestiones comerciales<br>
+                    Relación: 1 agente → N pólizas
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">📦 productos + recibos</div>
+                <div class="card-detail">
+                    Productos: ramo 11 (Vida), 34 (GMM)<br>
+                    Recibos: granularidad de pagos<br>
+                    Metas + Presupuestos anuales<br>
+                    Indicadores AXA (conciliación)
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">🆕 Fase 5</div>
+                <div class="card-detail">
+                    Contratantes (6 seed)<br>
+                    Solicitudes (8 pipeline)<br>
+                    Distribución comisiones<br>
+                    Configuraciones dinámicas (9)
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Arrow -->
+    <div class="connector">
+        <div class="connector-label" style="background:rgba(6,182,212,0.15);color:#22d3ee;">Depends(get_db) → Session</div>
+        <div class="connector-line" style="background:linear-gradient(to bottom,rgba(16,185,129,0.5),rgba(6,182,212,0.5));"></div>
+    </div>
+
+    <!-- ═══ FASE 5: API ENDPOINTS ═══ -->
+    <div class="phase phase-api" id="api">
+        <div class="phase-header">
+            <div class="phase-icon">🔌</div>
+            <div>
+                <div class="phase-title">5. API REST (FastAPI — 12 Routers)</div>
+                <div class="phase-subtitle">Consultas SQL + joins + agregaciones → JSON serializado con Pydantic</div>
+            </div>
+            <span class="phase-tag">66 E2E TESTS ✓</span>
+        </div>
+        <div class="cards">
+            <div class="card">
+                <div class="card-title">📊 /dashboard</div>
+                <div class="card-detail">
+                    KPIs: pólizas nuevas/sub, primas<br>
+                    Producción mensual (vida + gmm)<br>
+                    Top 10 agentes<br>
+                    Distribución por gama
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">💰 /finanzas + /cobranza</div>
+                <div class="card-detail">
+                    Ingresos vs Egresos mensual<br>
+                    Proyección de cierre (lineal)<br>
+                    Presupuesto IDEAL vs real<br>
+                    Deudor por prima + alertas
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">📋 CRUD Endpoints</div>
+                <div class="card-detail">
+                    <code>/polizas</code> — list + filtros<br>
+                    <code>/agentes</code> — list + situación<br>
+                    <code>/contratantes</code> — CRUD + search<br>
+                    <code>/conciliacion</code> — AXA vs interno
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">📝 Pipeline & Config</div>
+                <div class="card-detail">
+                    <code>/solicitudes</code> — Kanban pipeline<br>
+                    <code>/comisiones</code> — distribuciones<br>
+                    <code>/configuracion</code> — dinámica<br>
+                    <code>/exportar</code> — Excel download
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Arrow -->
+    <div class="connector">
+        <div class="connector-label" style="background:rgba(236,72,153,0.15);color:#f472b6;">fetch() → JSON → useState</div>
+        <div class="connector-line" style="background:linear-gradient(to bottom,rgba(6,182,212,0.5),rgba(236,72,153,0.5));"></div>
+    </div>
+
+    <!-- ═══ FASE 6: FRONTEND ═══ -->
+    <div class="phase phase-front" id="frontend">
+        <div class="phase-header">
+            <div class="phase-icon">🖥️</div>
+            <div>
+                <div class="phase-title">6. FRONTEND (Next.js 16 + Recharts)</div>
+                <div class="phase-subtitle">10 páginas interactivas — Dashboards, tablas, Kanban, configuración inline</div>
+            </div>
+            <span class="phase-tag">SALIDA VISUAL</span>
+        </div>
+        <div class="cards">
+            <div class="card">
+                <div class="card-title">📊 Dashboards</div>
+                <div class="card-detail">
+                    <strong>/dashboard</strong> — KPIs + gráficas principales<br>
+                    <strong>/ejecutivo</strong> — Vista directiva<br>
+                    <strong>/finanzas</strong> — 4 tabs con Recharts<br>
+                    <strong>/cobranza</strong> — Semáforo de urgencia
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">📋 Operación</div>
+                <div class="card-detail">
+                    <strong>/polizas</strong> — Tabla paginada + filtros<br>
+                    <strong>/agentes</strong> — Ranking + métricas<br>
+                    <strong>/contratantes</strong> — CRUD + referidos<br>
+                    <strong>/solicitudes</strong> — Kanban 5 columnas
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">⚙️ Sistema</div>
+                <div class="card-detail">
+                    <strong>/conciliacion</strong> — AXA vs Interno<br>
+                    <strong>/cartera</strong> — Producción histórica<br>
+                    <strong>/configuracion</strong> — Edición inline<br>
+                    <strong>Sidebar</strong> — 4 secciones navegación
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Legend -->
+<div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#fbbf24;"></div> Insumos Excel</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#60a5fa;"></div> Importación</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#a78bfa;"></div> Motor de Reglas</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#34d399;"></div> Base de Datos</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#22d3ee;"></div> API REST</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f472b6;"></div> Frontend</div>
+    <div class="legend-item" style="margin-left:20px;color:#64748b;">|</div>
+    <div class="legend-item"><span style="color:#e0e4ef;font-weight:600;">221 tests</span> (155 rules + 66 e2e)</div>
+    <div class="legend-item"><span style="color:#e0e4ef;font-weight:600;">15 tablas</span> SQLite</div>
+    <div class="legend-item"><span style="color:#e0e4ef;font-weight:600;">12 routers</span> FastAPI</div>
+    <div class="legend-item"><span style="color:#e0e4ef;font-weight:600;">10 páginas</span> Next.js</div>
+</div>
+
+<script>
+// Simple scroll animation
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            entry.target.style.opacity = '1';
+            entry.target.style.transform = 'translateY(0)';
+        }
+    });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.phase, .connector').forEach(el => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(20px)';
+    el.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+    observer.observe(el);
+});
+</script>
+
+</body>
+</html>

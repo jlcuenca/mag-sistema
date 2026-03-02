@@ -36,3 +36,30 @@ export const MESES = {
     '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Ago',
     '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dic',
 };
+
+/**
+ * URLs base para documentos PDF (solicitudes y pólizas).
+ * Configurable vía variables de entorno o por defecto al servidor de cartera.
+ */
+export const DOC_BASE_URL = process.env.NEXT_PUBLIC_DOC_BASE_URL
+    || 'http://54.184.22.19:7070/cartera-0.1/static/archivos';
+
+/**
+ * Construye la URL del PDF de una solicitud.
+ * Ej: getSolicitudDocUrl('1715626') → .../solicitudes/1715626.pdf
+ */
+export function getSolicitudDocUrl(numSolicitud) {
+    if (!numSolicitud) return null;
+    const num = String(numSolicitud).trim();
+    return `${DOC_BASE_URL}/solicitudes/${num}.pdf`;
+}
+
+/**
+ * Construye la URL del PDF de una póliza.
+ * Ej: getPolizaDocUrl('19715626') → .../19715626.pdf
+ */
+export function getPolizaDocUrl(numPoliza) {
+    if (!numPoliza) return null;
+    const num = String(numPoliza).trim();
+    return `${DOC_BASE_URL}/${num}.pdf`;
+}

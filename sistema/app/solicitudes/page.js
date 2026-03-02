@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, getSolicitudDocUrl } from '@/lib/api';
 
 const ESTADOS = ['TRAMITE', 'EMITIDA', 'PAGADA', 'RECHAZADA', 'CANCELADA'];
 const ESTADO_CONFIG = {
@@ -29,6 +29,7 @@ export default function Solicitudes() {
     const [form, setForm] = useState({ ...EMPTY_FORM });
     const [saving, setSaving] = useState(false);
     const [viewMode, setViewMode] = useState('kanban'); // kanban | tabla
+    const [docViewer, setDocViewer] = useState(null); // { folio, url }
 
     const fetchData = () => {
         setLoading(true);
@@ -144,7 +145,15 @@ export default function Solicitudes() {
                                                         📅 {s.fecha_solicitud || '—'}
                                                     </div>
                                                     {/* Quick actions */}
-                                                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                                                        <button
+                                                            className="btn btn-ghost"
+                                                            title={`Ver PDF solicitud ${s.folio}`}
+                                                            onClick={() => setDocViewer({ folio: s.folio, url: getSolicitudDocUrl(s.folio), contratante: s.contratante_nombre })}
+                                                            style={{ padding: '3px 8px', fontSize: 10, color: '#60a5fa' }}
+                                                        >
+                                                            📄 Ver Doc
+                                                        </button>
                                                         {estado === 'TRAMITE' && (
                                                             <>
                                                                 <button className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 10, color: '#3b82f6' }} onClick={() => updateEstado(s.id, 'EMITIDA')}>📄 Emitir</button>
@@ -175,6 +184,7 @@ export default function Solicitudes() {
                                     <thead>
                                         <tr>
                                             <th>Folio</th>
+                                            <th style={{ textAlign: 'center', width: 50 }}>Doc</th>
                                             <th>Estado</th>
                                             <th>Ramo</th>
                                             <th>Plan</th>
@@ -199,6 +209,16 @@ export default function Solicitudes() {
                                             return (
                                                 <tr key={s.id}>
                                                     <td><code style={{ fontSize: 11 }}>{s.folio}</code></td>
+                                                    <td style={{ textAlign: 'center' }}>
+                                                        <button
+                                                            className="btn btn-ghost"
+                                                            title={`Ver PDF solicitud ${s.folio}`}
+                                                            onClick={() => setDocViewer({ folio: s.folio, url: getSolicitudDocUrl(s.folio), contratante: s.contratante_nombre })}
+                                                            style={{ padding: '3px 6px', fontSize: 14, lineHeight: 1, borderRadius: 6, minWidth: 30 }}
+                                                        >
+                                                            📄
+                                                        </button>
+                                                    </td>
                                                     <td><span className="badge" style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}30` }}>{cfg.icon} {cfg.label}</span></td>
                                                     <td><span className="badge badge-info">{s.ramo}</span></td>
                                                     <td>{s.plan || '—'}</td>
@@ -256,6 +276,88 @@ export default function Solicitudes() {
                                 <button className="btn btn-primary" disabled={saving} onClick={handleCreate}>
                                     {saving ? 'Creando...' : 'Crear Solicitud'}
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ═══ PDF Viewer Modal ═══ */}
+                {docViewer && (
+                    <div
+                        style={{
+                            position: 'fixed', inset: 0, zIndex: 1000,
+                            background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            animation: 'fadeIn 0.2s ease',
+                        }}
+                        onClick={() => setDocViewer(null)}
+                    >
+                        <div
+                            style={{
+                                width: '85vw', maxWidth: 1000, height: '90vh',
+                                background: 'var(--bg-card)', borderRadius: 16,
+                                border: '1px solid var(--border)',
+                                boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
+                                display: 'flex', flexDirection: 'column',
+                                overflow: 'hidden',
+                                animation: 'slideUp 0.25s ease',
+                            }}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            {/* Header */}
+                            <div style={{
+                                padding: '16px 24px', display: 'flex', justifyContent: 'space-between',
+                                alignItems: 'center', borderBottom: '1px solid var(--border)',
+                                background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(59,130,246,0.05))',
+                            }}>
+                                <div>
+                                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        📝 Documento de Solicitud
+                                        <code style={{ fontSize: 12, background: 'rgba(245,158,11,0.15)', color: '#fbbf24', padding: '2px 8px', borderRadius: 4 }}>
+                                            {docViewer.folio}
+                                        </code>
+                                    </div>
+                                    {docViewer.contratante && (
+                                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                                            Contratante: {docViewer.contratante}
+                                        </div>
+                                    )}
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                    <a
+                                        href={docViewer.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="btn btn-ghost"
+                                        style={{ padding: '6px 14px', fontSize: 12, textDecoration: 'none', color: '#60a5fa' }}
+                                    >
+                                        🔗 Abrir en nueva pestaña
+                                    </a>
+                                    <a
+                                        href={docViewer.url}
+                                        download
+                                        className="btn btn-ghost"
+                                        style={{ padding: '6px 14px', fontSize: 12, textDecoration: 'none', color: '#34d399' }}
+                                    >
+                                        ⬇ Descargar
+                                    </a>
+                                    <button
+                                        className="btn btn-ghost"
+                                        onClick={() => setDocViewer(null)}
+                                        style={{ padding: '6px 10px', fontSize: 16, lineHeight: 1 }}
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* PDF Embed */}
+                            <div style={{ flex: 1, background: '#1a1a2e' }}>
+                                <iframe
+                                    src={docViewer.url}
+                                    style={{ width: '100%', height: '100%', border: 'none' }}
+                                    title={`Solicitud ${docViewer.folio}`}
+                                />
                             </div>
                         </div>
                     </div>

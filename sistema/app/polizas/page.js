@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import Sidebar from '@/components/Sidebar';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, getPolizaDocUrl } from '@/lib/api';
 
 const MESES_ABR = { '01': 'Ene', '02': 'Feb', '03': 'Mar', '04': 'Abr', '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Ago', '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dic' };
 
@@ -24,6 +24,7 @@ export default function Polizas() {
     const [page, setPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [filters, setFilters] = useState({ ramo: '', tipo: '', anio: '', q: '' });
+    const [docViewer, setDocViewer] = useState(null); // { poliza, url }
 
     const fetchPolizas = useCallback(() => {
         setLoading(true);
@@ -109,6 +110,7 @@ export default function Polizas() {
                                 <thead>
                                     <tr>
                                         <th>Póliza</th>
+                                        <th style={{ textAlign: 'center', width: 50 }}>Doc</th>
                                         <th>Asegurado</th>
                                         <th>Agente</th>
                                         <th>Ramo</th>
@@ -125,14 +127,14 @@ export default function Polizas() {
                                     {loading ? (
                                         Array(10).fill(0).map((_, i) => (
                                             <tr key={i}>
-                                                {Array(11).fill(0).map((_, j) => (
+                                                {Array(12).fill(0).map((_, j) => (
                                                     <td key={j}><div className="loading-skeleton" style={{ height: 14, width: '80%' }} /></td>
                                                 ))}
                                             </tr>
                                         ))
                                     ) : polizas.length === 0 ? (
                                         <tr>
-                                            <td colSpan={11}>
+                                            <td colSpan={12}>
                                                 <div className="empty-state">
                                                     <div className="empty-state-icon">📋</div>
                                                     <div className="empty-state-title">Sin resultados</div>
@@ -146,6 +148,16 @@ export default function Polizas() {
                                                 <code style={{ background: 'rgba(59,130,246,0.1)', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>
                                                     {p.poliza_original}
                                                 </code>
+                                            </td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                <button
+                                                    className="btn btn-ghost"
+                                                    title={`Ver PDF: ${p.poliza_original}`}
+                                                    onClick={() => setDocViewer({ poliza: p.poliza_original, url: getPolizaDocUrl(p.poliza_original), asegurado: p.asegurado_nombre })}
+                                                    style={{ padding: '3px 6px', fontSize: 14, lineHeight: 1, borderRadius: 6, minWidth: 30 }}
+                                                >
+                                                    📄
+                                                </button>
                                             </td>
                                             <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                 <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{p.asegurado_nombre}</span>
@@ -204,6 +216,88 @@ export default function Polizas() {
                         )}
                     </div>
                 </div>
+
+                {/* ═══ PDF Viewer Modal ═══ */}
+                {docViewer && (
+                    <div
+                        style={{
+                            position: 'fixed', inset: 0, zIndex: 1000,
+                            background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            animation: 'fadeIn 0.2s ease',
+                        }}
+                        onClick={() => setDocViewer(null)}
+                    >
+                        <div
+                            style={{
+                                width: '85vw', maxWidth: 1000, height: '90vh',
+                                background: 'var(--bg-card)', borderRadius: 16,
+                                border: '1px solid var(--border)',
+                                boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
+                                display: 'flex', flexDirection: 'column',
+                                overflow: 'hidden',
+                                animation: 'slideUp 0.25s ease',
+                            }}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            {/* Header */}
+                            <div style={{
+                                padding: '16px 24px', display: 'flex', justifyContent: 'space-between',
+                                alignItems: 'center', borderBottom: '1px solid var(--border)',
+                                background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(16,185,129,0.05))',
+                            }}>
+                                <div>
+                                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        📄 Documento de Póliza
+                                        <code style={{ fontSize: 12, background: 'rgba(59,130,246,0.15)', color: '#60a5fa', padding: '2px 8px', borderRadius: 4 }}>
+                                            {docViewer.poliza}
+                                        </code>
+                                    </div>
+                                    {docViewer.asegurado && (
+                                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                                            Asegurado: {docViewer.asegurado}
+                                        </div>
+                                    )}
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                    <a
+                                        href={docViewer.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="btn btn-ghost"
+                                        style={{ padding: '6px 14px', fontSize: 12, textDecoration: 'none', color: '#60a5fa' }}
+                                    >
+                                        🔗 Abrir en nueva pestaña
+                                    </a>
+                                    <a
+                                        href={docViewer.url}
+                                        download
+                                        className="btn btn-ghost"
+                                        style={{ padding: '6px 14px', fontSize: 12, textDecoration: 'none', color: '#34d399' }}
+                                    >
+                                        ⬇ Descargar
+                                    </a>
+                                    <button
+                                        className="btn btn-ghost"
+                                        onClick={() => setDocViewer(null)}
+                                        style={{ padding: '6px 10px', fontSize: 16, lineHeight: 1 }}
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* PDF Embed */}
+                            <div style={{ flex: 1, background: '#1a1a2e' }}>
+                                <iframe
+                                    src={docViewer.url}
+                                    style={{ width: '100%', height: '100%', border: 'none' }}
+                                    title={`Póliza ${docViewer.poliza}`}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
             </main>
         </div>
     );

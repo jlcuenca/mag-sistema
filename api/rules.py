@@ -796,8 +796,19 @@ def aplicar_reglas_poliza(poliza: dict, ramo_codigo: int = None) -> dict:
 
     # Fecha de aplicación y derivados
     if not fecha_apli or fecha_apli == "-":
-        # Si tiene status PAGADA, inferir de fecha_inicio
-        if status in ("PAGADA", "AL CORRIENTE", "POLIZA PAGADA", "POLIZA AL CORRIENTE"):
+        # Si tiene status PAGADA o mystatus que indica pago, inferir de fecha_inicio
+        pagada_statuses = (
+            "PAGADA", "AL CORRIENTE", "POLIZA PAGADA", "POLIZA AL CORRIENTE",
+            "TERMINADA PAGADA", "PAGADA C/REHABILITACION",
+            "CON DERECHO AL SERVICIO", "VIGENTE",
+        )
+        pagada_mystatus = (
+            "PAGADA TOTAL", "PAGADA S/FP", "PAGADA", "TERMINADA",
+            "TERMINADA PAGADA", "ANTICIPADA",
+        )
+        ms_upper = ms.strip().upper() if ms else ""
+        status_upper = status.strip().upper() if status else ""
+        if status_upper in pagada_statuses or ms_upper in pagada_mystatus:
             fecha_apli = fecha_ini
     _mes_apli = mes_aplicacion(fecha_apli)
     _anio_apli = None
