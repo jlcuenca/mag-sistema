@@ -1,6 +1,6 @@
 """
-Módulo de base de datos: SQLAlchemy + SQLite para MAG Sistema
-v0.2.0 — Modelo enriquecido con datos del Reporte Cubo 2025
+Módulo de base de datos: SQLAlchemy para MAG Sistema
+v0.3.0 — Soporta SQLite (local) y PostgreSQL (GCP Cloud SQL)
 """
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, Boolean,
@@ -12,17 +12,33 @@ from datetime import datetime, date
 import os
 
 # ── Configuración ──────────────────────────────────────────────────
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "sistema", "data", "mag.db")
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+# En producción (GCP): DATABASE_URL = "postgresql://user:pass@host/db"
+# En desarrollo local: usa SQLite por defecto
+_ENV_DB_URL = os.getenv("DATABASE_URL")
 
-DATABASE_URL = f"sqlite:///{DB_PATH}"
-
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    echo=False
-)
+if _ENV_DB_URL:
+    # PostgreSQL en Cloud SQL (producción)
+    DATABASE_URL = _ENV_DB_URL
+    engine = create_engine(
+        DATABASE_URL,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        echo=False,
+    )
+    print(f"[MAG-DB] Conectando a PostgreSQL...")
+else:
+    # SQLite local (desarrollo)
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    DB_PATH = os.path.join(BASE_DIR, "sistema", "data", "mag.db")
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    DATABASE_URL = f"sqlite:///{DB_PATH}"
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        echo=False,
+    )
+    print(f"[MAG-DB] Usando SQLite local: {DB_PATH}")
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

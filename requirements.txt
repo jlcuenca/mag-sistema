@@ -9,3 +9,5 @@ python-multipart==0.0.22
 xlsxwriter==3.2.9
 python-dateutil==2.9.0.post0
 httpx==0.28.1
+psycopg2-binary==2.9.10
+gunicorn==23.0.0
