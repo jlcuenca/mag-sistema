@@ -1,0 +1,19 @@
+# cloudbuild-frontend.yaml — Build del frontend Next.js
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/mag-frontend:latest'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_API_URL=${_API_URL}'
+      - '.'
+    dir: 'sistema'
+
+images:
+  - 'gcr.io/$PROJECT_ID/mag-frontend:latest'
+
+substitutions:
+  _API_URL: 'https://mag-api-922967332336.us-central1.run.app'
+
+timeout: '900s'

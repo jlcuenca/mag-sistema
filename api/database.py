@@ -491,4 +491,5 @@ def get_db():
 def init_db():
     """Crea las tablas si no existen"""
     Base.metadata.create_all(bind=engine)
-    print(f"✅ Base de datos lista en: {DB_PATH}")
+    db_desc = DATABASE_URL.split("@")[0].split("://")[0] if "@" in DATABASE_URL else DATABASE_URL
+    print(f"✅ Base de datos lista ({db_desc})")
