@@ -33,7 +33,7 @@ export default function Configuracion() {
         try {
             const formData = new FormData();
             formData.append('archivo', importFile);
-            const res = await fetch(`${API_URL}/importar/excel-polizas`, {
+            const res = await fetch(`${API_URL}/importar/csv-polizas`, {
                 method: 'POST',
                 body: formData,
             });
@@ -64,7 +64,7 @@ export default function Configuracion() {
         e.preventDefault();
         setDragOver(false);
         const f = e.dataTransfer.files[0];
-        if (f && (f.name.endsWith('.xlsx') || f.name.endsWith('.xls'))) setImportFile(f);
+        if (f && f.name.endsWith('.csv')) setImportFile(f);
     };
 
     const fetchData = () => {
@@ -132,8 +132,8 @@ export default function Configuracion() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
                             <span style={{ fontSize: 24 }}>📥</span>
                             <div>
-                                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Importar Pólizas desde Excel</div>
-                                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Sube el archivo POLIZAS_01 (.xlsx) para importar o actualizar pólizas</div>
+                                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Importar Pólizas desde CSV</div>
+                                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Sube un archivo CSV con encabezados para importar pólizas (limpia tabla antes de importar)</div>
                             </div>
                         </div>
 
@@ -152,7 +152,7 @@ export default function Configuracion() {
                                     transition: 'all 0.2s',
                                 }}
                             >
-                                <input ref={fileInputRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
+                                <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }}
                                     onChange={(e) => setImportFile(e.target.files[0])} />
                                 {importFile ? (
                                     <div>
@@ -163,8 +163,8 @@ export default function Configuracion() {
                                 ) : (
                                     <div>
                                         <div style={{ fontSize: 28, marginBottom: 6 }}>📂</div>
-                                        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Arrastra tu Excel aquí o <span style={{ color: '#3b82f6', fontWeight: 600 }}>haz clic para buscar</span></div>
-                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Formatos: .xlsx, .xls | Hoja: querys</div>
+                                        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Arrastra tu CSV aquí o <span style={{ color: '#3b82f6', fontWeight: 600 }}>haz clic para buscar</span></div>
+                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Formato: .csv con encabezados (POLIZA, NOMRAMO, FECINI, etc.)</div>
                                     </div>
                                 )}
                             </div>
