@@ -1022,12 +1022,13 @@ router_importacion = APIRouter(prefix="/importar", tags=["Importación"])
 @router_importacion.post("/excel-polizas", response_model=ImportacionResult)
 async def importar_excel_polizas(
     archivo: UploadFile = File(...),
-    hoja: str = Query("querys", description="Nombre de la hoja a importar"),
     db: Session = Depends(get_db)
 ):
     """
     Importa pólizas desde un archivo Excel (POLIZAS01 o similar).
-    Usa pandas para leer el archivo y aplica las reglas de negocio automáticamente.
+    1. Limpia la tabla pólizas completamente
+    2. Importa hojas VIDA y GMM
+    3. Aplica reglas de negocio automáticamente
     """
     if not archivo.filename.endswith((".xlsx", ".xls", ".xlsb")):
         raise HTTPException(400, "Solo se aceptan archivos Excel (.xlsx, .xls, .xlsb)")
@@ -1037,140 +1038,95 @@ async def importar_excel_polizas(
     nuevos = 0
     actualizados = 0
 
+    # Hojas a importar (en orden)
+    HOJAS = ["VIDA", "GMM"]
+
     try:
-        df = pd.read_excel(io.BytesIO(contenido), sheet_name=hoja, dtype=str)
-        df.columns = [c.strip().upper() for c in df.columns]
-        df = df.where(pd.notna(df), None)
+        # ── Paso 0: Limpiar tabla pólizas ──
+        count_antes = db.execute(text("SELECT COUNT(*) FROM polizas")).scalar() or 0
+        db.execute(text("DELETE FROM polizas"))
+        db.commit()
+        errores.append(f"INFO: Tabla polizas limpiada ({count_antes} registros anteriores eliminados)")
 
-        # Mapeo de columnas Excel → modelo
-        COL_MAP = {
-            "POLIZA": "poliza_original",
-            "ASEGURADO": "asegurado_nombre",
-            "CONTRATANTE": "contratante_nombre",
-            "RFC": "rfc",
-            "FECINI": "fecha_inicio",
-            "FECFIN": "fecha_fin",
-            "FECEMI": "fecha_emision",
-            "PRIMA_TOT": "prima_total",
-            "PRIMANETA": "prima_neta",
-            "IVA": "iva",
-            "RECARGO": "recargo",
-            "SUMA": "suma_asegurada",
-            "DEDUCIBLE": "deducible",
-            "COASEGURO": "coaseguro",
-            "FP": "forma_pago",
-            "TIPPAG": "tipo_pago",
-            "STATUS": "status_recibo",
-            "GAMA": "gama",
-            "NOMRAMO": "ramo_nombre_raw",
-            "MYSTATUS": "mystatus_raw",
-            "ASEGS": "num_asegurados",
-            "AGENTE": "agente_codigo_raw",
-        }
+        # ── Paso 1: Leer hojas disponibles ──
+        xls = pd.ExcelFile(io.BytesIO(contenido))
+        hojas_disponibles = xls.sheet_names
+        hojas_a_importar = [h for h in HOJAS if h in hojas_disponibles]
 
-        for i, row in df.iterrows():
-            try:
-                pol_num = row.get("POLIZA")
-                if not pol_num:
-                    continue
+        if not hojas_a_importar:
+            raise HTTPException(400,
+                f"No se encontraron hojas VIDA/GMM. Hojas disponibles: {hojas_disponibles}")
 
-                # Buscar agente
-                agente_codigo = row.get("AGENTE")
-                agente_id = None
-                if agente_codigo:
-                    ag = db.execute(
-                        text("SELECT id FROM agentes WHERE codigo_agente = :c"),
-                        {"c": str(agente_codigo).strip()}
-                    ).scalar()
-                    agente_id = ag
+        # ── Paso 2: Importar cada hoja ──
+        for hoja in hojas_a_importar:
+            df = pd.read_excel(xls, sheet_name=hoja, dtype=str)
+            df.columns = [c.strip().upper() for c in df.columns]
+            df = df.where(pd.notna(df), None)
 
-                # Buscar producto
-                ramo_raw = (row.get("NOMRAMO") or "").upper()
-                gama = row.get("GAMA")
-                plan = row.get("PLAN") or row.get("COBERTURA")
-                ramo_codigo = 11 if "VIDA" in ramo_raw else 34
+            # Determinar ramo por hoja
+            ramo_codigo = 11 if hoja.upper() == "VIDA" else 34
+            ramo_label = "Vida" if ramo_codigo == 11 else "GMM"
+            nuevos_hoja = 0
 
-                prod = db.execute(text("""
-                    SELECT id FROM productos
-                    WHERE ramo_codigo = :rc
-                    ORDER BY id LIMIT 1
-                """), {"rc": ramo_codigo}).scalar()
+            for i, row in df.iterrows():
+                try:
+                    pol_num = row.get("POLIZA")
+                    if not pol_num:
+                        continue
 
-                # Fechas
-                fecha_ini = str(row.get("FECINI") or "")[:10] or None
-                fecha_fin = str(row.get("FECFIN") or "")[:10] or None
-                anio = int(fecha_ini[:4]) if fecha_ini and len(fecha_ini) >= 4 else None
+                    # Buscar agente
+                    agente_codigo = row.get("AGENTE")
+                    agente_id = None
+                    if agente_codigo:
+                        ag = db.execute(
+                            text("SELECT id FROM agentes WHERE codigo_agente = :c"),
+                            {"c": str(agente_codigo).strip()}
+                        ).scalar()
+                        agente_id = ag
 
-                # Importes
-                def to_float(v):
-                    try: return float(str(v).replace(",", "").strip()) if v else None
-                    except: return None
+                    # Buscar producto
+                    gama = row.get("GAMA")
+                    prod = db.execute(text("""
+                        SELECT id FROM productos
+                        WHERE ramo_codigo = :rc
+                        ORDER BY id LIMIT 1
+                    """), {"rc": ramo_codigo}).scalar()
 
-                prima_neta = to_float(row.get("PRIMANETA"))
-                prima_total = to_float(row.get("PRIMA_TOT"))
-                iva = to_float(row.get("IVA")) or 0
-                recargo = to_float(row.get("RECARGO")) or 0
-                suma = to_float(row.get("SUMA"))
-                deducible = to_float(row.get("DEDUCIBLE"))
+                    # Fechas
+                    fecha_ini = str(row.get("FECINI") or "")[:10] or None
+                    fecha_fin = str(row.get("FECFIN") or "")[:10] or None
+                    anio = int(fecha_ini[:4]) if fecha_ini and len(fecha_ini) >= 4 else None
 
-                # Status
-                status = (row.get("STATUS") or "PAGADA").strip()
-                mystatus = calcular_mystatus(status)
-                moneda = (row.get("MON") or "MN").strip()
+                    # Importes
+                    def to_float(v):
+                        try: return float(str(v).replace(",", "").strip()) if v else None
+                        except: return None
 
-                # ── Aplicar reglas de cálculo (columnas AUTOMATICO) ──
-                poliza_dict = {
-                    "poliza_original": str(pol_num).strip(),
-                    "fecha_inicio": fecha_ini,
-                    "prima_neta": prima_neta,
-                    "moneda": moneda,
-                    "mystatus": mystatus,
-                    "status_recibo": status,
-                    "anio_aplicacion": anio,
-                    "es_nueva": None,
-                }
-                reglas = aplicar_reglas_poliza(poliza_dict, ramo_codigo=ramo_codigo)
+                    prima_neta = to_float(row.get("PRIMANETA"))
+                    prima_total = to_float(row.get("PRIMA_TOT"))
+                    iva = to_float(row.get("IVA")) or 0
+                    recargo = to_float(row.get("RECARGO")) or 0
+                    suma = to_float(row.get("SUMA"))
+                    deducible = to_float(row.get("DEDUCIBLE"))
 
-                # Verificar si ya existe
-                existente = db.execute(
-                    text("SELECT id FROM polizas WHERE poliza_original = :p"),
-                    {"p": str(pol_num).strip()}
-                ).scalar()
+                    # Status
+                    status = (row.get("STATUS") or "PAGADA").strip()
+                    mystatus = calcular_mystatus(status)
+                    moneda = (row.get("MON") or "MN").strip()
 
-                if existente:
-                    db.execute(text("""
-                        UPDATE polizas SET
-                            prima_neta = :pn, prima_total = :pt,
-                            status_recibo = :sr, mystatus = :ms,
-                            moneda = :mon,
-                            largo_poliza = :largo, raiz_poliza_6 = :raiz6,
-                            terminacion = :term, id_compuesto = :id_comp,
-                            es_reexpedicion = :reexp, primer_anio = :primer,
-                            fecha_aplicacion = :fec_apli, mes_aplicacion = :mes_apli,
-                            pendientes_pago = :pend, trimestre = :trim,
-                            flag_pagada = :fpag, flag_nueva_formal = :fnueva,
-                            prima_anual_pesos = :pap, equivalencias_emitidas = :eqe,
-                            equivalencias_pagadas = :eqp, flag_cancelada = :fcanc,
-                            prima_proporcional = :pprop, condicional_prima = :cprim,
-                            prima_acumulada_basica = :pacum,
-                            updated_at = datetime('now')
-                        WHERE id = :id
-                    """), {
-                        "pn": prima_neta, "pt": prima_total, "sr": status,
-                        "ms": mystatus, "mon": moneda, "id": existente,
-                        "largo": reglas["largo_poliza"], "raiz6": reglas["raiz_poliza_6"],
-                        "term": reglas["terminacion"], "id_comp": reglas["id_compuesto"],
-                        "reexp": reglas["es_reexpedicion"], "primer": reglas["primer_anio"],
-                        "fec_apli": reglas["fecha_aplicacion"], "mes_apli": reglas["mes_aplicacion"],
-                        "pend": reglas["pendientes_pago"], "trim": reglas["trimestre"],
-                        "fpag": reglas["flag_pagada"], "fnueva": reglas["flag_nueva_formal"],
-                        "pap": reglas["prima_anual_pesos"], "eqe": reglas["equivalencias_emitidas"],
-                        "eqp": reglas["equivalencias_pagadas"], "fcanc": reglas["flag_cancelada"],
-                        "pprop": reglas["prima_proporcional"], "cprim": reglas["condicional_prima"],
-                        "pacum": reglas["prima_acumulada_basica"],
-                    })
-                    actualizados += 1
-                else:
+                    # ── Aplicar reglas de cálculo ──
+                    poliza_dict = {
+                        "poliza_original": str(pol_num).strip(),
+                        "fecha_inicio": fecha_ini,
+                        "prima_neta": prima_neta,
+                        "moneda": moneda,
+                        "mystatus": mystatus,
+                        "status_recibo": status,
+                        "anio_aplicacion": anio,
+                        "es_nueva": None,
+                    }
+                    reglas = aplicar_reglas_poliza(poliza_dict, ramo_codigo=ramo_codigo)
+
                     db.execute(text("""
                         INSERT INTO polizas (
                             poliza_original, poliza_estandar, agente_id, producto_id,
@@ -1192,7 +1148,7 @@ async def importar_excel_polizas(
                             :pt, :pn, :iv, :re, :su,
                             :de, :na, :fp, :tp,
                             :sr, :ga, :ms, :per,
-                            :anio, :mon, 'EXCEL_IMPORT',
+                            :anio, :mon, :fuente,
                             :largo, :raiz6, :term, :id_comp,
                             :reexp, :primer, :fec_apli,
                             :mes_apli, :pend, :trim,
@@ -1214,6 +1170,7 @@ async def importar_excel_polizas(
                         "sr": status, "ga": gama, "ms": mystatus,
                         "per": f"{anio}-{fecha_ini[5:7]}" if fecha_ini and anio else None,
                         "anio": anio, "mon": moneda,
+                        "fuente": f"EXCEL_{hoja}",
                         "largo": reglas["largo_poliza"], "raiz6": reglas["raiz_poliza_6"],
                         "term": reglas["terminacion"], "id_comp": reglas["id_compuesto"],
                         "reexp": reglas["es_reexpedicion"], "primer": reglas["primer_anio"],
@@ -1225,37 +1182,41 @@ async def importar_excel_polizas(
                         "pprop": reglas["prima_proporcional"], "cprim": reglas["condicional_prima"],
                         "pacum": reglas["prima_acumulada_basica"],
                     })
-                    nuevos += 1
+                    nuevos_hoja += 1
 
-            except Exception as e:
-                errores.append(f"Fila {i+2}: {str(e)}")
-                continue
+                except Exception as e:
+                    errores.append(f"[{hoja}] Fila {i+2}: {str(e)}")
+                    continue
 
-        db.commit()
+            db.commit()
+            nuevos += nuevos_hoja
+            errores.append(f"INFO: Hoja {ramo_label} ({hoja}): {nuevos_hoja} pólizas importadas de {len(df)} filas")
 
         # Log de importación
         log = Importacion(
             tipo="EXCEL_POLIZAS",
             archivo_nombre=archivo.filename,
-            registros_procesados=len(df),
+            registros_procesados=nuevos + len([e for e in errores if not e.startswith("INFO:")]),
             registros_nuevos=nuevos,
-            registros_actualizados=actualizados,
-            registros_error=len(errores),
-            errores_detalle="\n".join(errores[:20]) if errores else None,
+            registros_actualizados=0,
+            registros_error=len([e for e in errores if not e.startswith("INFO:")]),
+            errores_detalle="\n".join(errores[:50]) if errores else None,
         )
         db.add(log)
         db.commit()
 
         return ImportacionResult(
             success=True,
-            registros_procesados=len(df),
+            registros_procesados=nuevos,
             registros_nuevos=nuevos,
-            registros_actualizados=actualizados,
-            registros_error=len(errores),
-            errores=errores[:10],
-            mensaje=f"Importación completada: {nuevos} nuevas, {actualizados} actualizadas, {len(errores)} errores"
+            registros_actualizados=0,
+            registros_error=len([e for e in errores if not e.startswith("INFO:")]),
+            errores=errores[:20],
+            mensaje=f"Importación completada: {nuevos} pólizas importadas (hojas: {', '.join(hojas_a_importar)})"
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"Error procesando archivo: {str(e)}")
 

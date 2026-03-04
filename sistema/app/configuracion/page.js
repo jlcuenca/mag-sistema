@@ -33,7 +33,7 @@ export default function Configuracion() {
         try {
             const formData = new FormData();
             formData.append('archivo', importFile);
-            const res = await fetch(`${API_URL}/importar/excel-polizas?hoja=querys`, {
+            const res = await fetch(`${API_URL}/importar/excel-polizas`, {
                 method: 'POST',
                 body: formData,
             });
