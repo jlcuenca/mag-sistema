@@ -1079,21 +1079,60 @@ async def importar_csv_polizas(
                     ).scalar()
                     agente_id = ag
 
-                ramo_raw = (row.get("NOMRAMO") or "").upper()
-                ramo_codigo = 11 if "VIDA" in ramo_raw else 34
-                gama = row.get("GAMA")
+                # Helper: limpiar valores nan de string
+                def clean(v):
+                    if v is None: return None
+                    s = str(v).strip()
+                    return None if s.lower() == "nan" or s == "" else s
+
+                # Determinar ramo: usar columna RAMO (codigo) o NOMRAMO (texto)
+                ramo_col = clean(row.get("RAMO"))
+                ramo_raw = (clean(row.get("NOMRAMO")) or "").upper()
+                if ramo_col:
+                    try:
+                        ramo_codigo = int(float(ramo_col))
+                    except Exception:
+                        ramo_codigo = 11 if "VIDA" in ramo_raw else 34
+                else:
+                    ramo_codigo = 11 if "VIDA" in ramo_raw else 34
+                gama = clean(row.get("GAMA"))
 
                 prod = db.execute(text(
                     "SELECT id FROM productos WHERE ramo_codigo = :rc ORDER BY id LIMIT 1"
                 ), {"rc": ramo_codigo}).scalar()
 
-                fecha_ini = str(row.get("FECINI") or "")[:10] or None
-                fecha_fin = str(row.get("FECFIN") or "")[:10] or None
+                # Fechas (soporta dd-MMM-yy estilo Oracle y yyyy-mm-dd)
+                def parse_date(v):
+                    s = clean(v)
+                    if not s:
+                        return None
+                    if len(s) >= 10 and s[4] == "-":
+                        return s[:10]
+                    try:
+                        from datetime import datetime as dt
+                        return dt.strptime(s, "%d-%b-%y").strftime("%Y-%m-%d")
+                    except Exception:
+                        pass
+                    for fmt in ["%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"]:
+                        try:
+                            from datetime import datetime as dt
+                            return dt.strptime(s, fmt).strftime("%Y-%m-%d")
+                        except Exception:
+                            continue
+                    return None
+
+                fecha_ini = parse_date(row.get("FECINI"))
+                fecha_fin = parse_date(row.get("FECFIN"))
                 anio = int(fecha_ini[:4]) if fecha_ini and len(fecha_ini) >= 4 else None
 
                 def to_float(v):
-                    try: return float(str(v).replace(",", "").strip()) if v else None
-                    except: return None
+                    s = clean(v)
+                    if not s:
+                        return None
+                    try:
+                        return float(s.replace(",", ""))
+                    except Exception:
+                        return None
 
                 prima_neta = to_float(row.get("PRIMANETA"))
                 prima_total = to_float(row.get("PRIMA_TOT"))
@@ -1102,9 +1141,10 @@ async def importar_csv_polizas(
                 suma = to_float(row.get("SUMA"))
                 deducible = to_float(row.get("DEDUCIBLE"))
 
-                status = (row.get("STATUS") or "PAGADA").strip()
-                mystatus = calcular_mystatus(status)
-                moneda = (row.get("MON") or "MN").strip()
+                status = clean(row.get("STATUS")) or "VIGENTE"
+                mystatus_csv = clean(row.get("MYSTATUS"))
+                mystatus = mystatus_csv if mystatus_csv else calcular_mystatus(status)
+                moneda = clean(row.get("MON")) or "MN"
 
                 poliza_dict = {
                     "poliza_original": str(pol_num).strip(),
@@ -1114,7 +1154,7 @@ async def importar_csv_polizas(
                     "mystatus": mystatus,
                     "status_recibo": status,
                     "anio_aplicacion": anio,
-                    "es_nueva": None,
+                    "es_nueva": clean(row.get("NUEVA")),
                 }
                 reglas = aplicar_reglas_poliza(poliza_dict, ramo_codigo=ramo_codigo)
 
@@ -1152,12 +1192,12 @@ async def importar_csv_polizas(
                     "po": str(pol_num).strip(),
                     "pe": normalizar_poliza(str(pol_num).strip()),
                     "ai": agente_id, "pi": prod,
-                    "an": row.get("ASEGURADO"), "fi": fecha_ini,
-                    "ff": fecha_fin, "fe": str(row.get("FECEMI") or "")[:10] or None,
+                    "an": clean(row.get("ASEGURADO")), "fi": fecha_ini,
+                    "ff": fecha_fin, "fe": parse_date(row.get("FECEMI")),
                     "pt": prima_total, "pn": prima_neta, "iv": iva, "re": recargo,
                     "su": suma, "de": deducible,
-                    "na": int(float(str(row.get("ASEGS") or 1))),
-                    "fp": row.get("FP"), "tp": row.get("TIPPAG"),
+                    "na": int(float(clean(row.get("ASEGS")) or "1")),
+                    "fp": clean(row.get("FP")), "tp": clean(row.get("TIPPAG")),
                     "sr": status, "ga": gama, "ms": mystatus,
                     "per": f"{anio}-{fecha_ini[5:7]}" if fecha_ini and anio else None,
                     "anio": anio, "mon": moneda,
