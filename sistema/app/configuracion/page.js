@@ -1,7 +1,7 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Sidebar from '@/components/Sidebar';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, API_URL } from '@/lib/api';
 
 const GRUPO_CONFIG = {
     umbrales: { icon: '📏', label: 'Umbrales', color: '#f59e0b' },
@@ -17,6 +17,55 @@ export default function Configuracion() {
     const [editando, setEditando] = useState(null);     // clave being edited
     const [editValor, setEditValor] = useState('');
     const [saving, setSaving] = useState(false);
+
+    // ── Import Excel state ──
+    const [importFile, setImportFile] = useState(null);
+    const [importing, setImporting] = useState(false);
+    const [importResult, setImportResult] = useState(null);
+    const [applyingRules, setApplyingRules] = useState(false);
+    const [dragOver, setDragOver] = useState(false);
+    const fileInputRef = useRef(null);
+
+    const handleImportExcel = async () => {
+        if (!importFile) return;
+        setImporting(true);
+        setImportResult(null);
+        try {
+            const formData = new FormData();
+            formData.append('archivo', importFile);
+            const res = await fetch(`${API_URL}/importar/excel-polizas?hoja=querys`, {
+                method: 'POST',
+                body: formData,
+            });
+            const result = await res.json();
+            if (!res.ok) throw new Error(result.detail || `Error ${res.status}`);
+            setImportResult(result);
+            setImportFile(null);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        } catch (e) {
+            setImportResult({ ok: false, mensaje: e.message, errores: [] });
+        }
+        setImporting(false);
+    };
+
+    const handleApplyRules = async () => {
+        setApplyingRules(true);
+        try {
+            const res = await fetch(`${API_URL}/importar/aplicar-reglas`, { method: 'POST' });
+            const result = await res.json();
+            setImportResult(result);
+        } catch (e) {
+            setImportResult({ ok: false, mensaje: e.message });
+        }
+        setApplyingRules(false);
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const f = e.dataTransfer.files[0];
+        if (f && (f.name.endsWith('.xlsx') || f.name.endsWith('.xls'))) setImportFile(f);
+    };
 
     const fetchData = () => {
         setLoading(true);
@@ -78,6 +127,87 @@ export default function Configuracion() {
                 </header>
 
                 <div className="page-content fade-in">
+                    {/* ── IMPORT EXCEL PANEL ── */}
+                    <div className="card" style={{ marginBottom: 20, background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.08))' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                            <span style={{ fontSize: 24 }}>📥</span>
+                            <div>
+                                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Importar Pólizas desde Excel</div>
+                                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Sube el archivo POLIZAS_01 (.xlsx) para importar o actualizar pólizas</div>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'stretch', flexWrap: 'wrap' }}>
+                            {/* Drop zone */}
+                            <div
+                                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                                onDragLeave={() => setDragOver(false)}
+                                onDrop={handleDrop}
+                                onClick={() => fileInputRef.current?.click()}
+                                style={{
+                                    flex: 1, minWidth: 250, padding: '24px 20px',
+                                    border: `2px dashed ${dragOver ? '#3b82f6' : 'var(--border)'}`,
+                                    borderRadius: 12, textAlign: 'center', cursor: 'pointer',
+                                    background: dragOver ? 'rgba(59,130,246,0.1)' : 'var(--bg-main)',
+                                    transition: 'all 0.2s',
+                                }}
+                            >
+                                <input ref={fileInputRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
+                                    onChange={(e) => setImportFile(e.target.files[0])} />
+                                {importFile ? (
+                                    <div>
+                                        <div style={{ fontSize: 28, marginBottom: 6 }}>📄</div>
+                                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{importFile.name}</div>
+                                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{(importFile.size / 1024 / 1024).toFixed(1)} MB — Listo para importar</div>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <div style={{ fontSize: 28, marginBottom: 6 }}>📂</div>
+                                        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Arrastra tu Excel aquí o <span style={{ color: '#3b82f6', fontWeight: 600 }}>haz clic para buscar</span></div>
+                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Formatos: .xlsx, .xls | Hoja: querys</div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Action buttons */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 180 }}>
+                                <button className="btn btn-primary" disabled={!importFile || importing}
+                                    onClick={handleImportExcel}
+                                    style={{ padding: '12px 20px', fontSize: 13, flex: 1, opacity: !importFile ? 0.5 : 1 }}>
+                                    {importing ? '⏳ Importando...' : '📥 Importar Pólizas'}
+                                </button>
+                                <button className="btn btn-ghost" disabled={applyingRules}
+                                    onClick={handleApplyRules}
+                                    style={{ padding: '12px 20px', fontSize: 13, flex: 1, border: '1px solid var(--border)' }}>
+                                    {applyingRules ? '⏳ Procesando...' : '🧮 Aplicar Reglas'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Import result */}
+                        {importResult && (
+                            <div style={{
+                                marginTop: 14, padding: '12px 16px', borderRadius: 10,
+                                background: importResult.ok !== false ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)',
+                                border: `1px solid ${importResult.ok !== false ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.3)'}`,
+                            }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: importResult.ok !== false ? '#10b981' : '#f43f5e', marginBottom: 4 }}>
+                                    {importResult.ok !== false ? '✅ Importación exitosa' : '❌ Error en importación'}
+                                </div>
+                                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{importResult.mensaje}</div>
+                                {importResult.nuevos > 0 && <div style={{ fontSize: 12, color: '#10b981', marginTop: 2 }}>📊 Nuevos: {importResult.nuevos} | Actualizados: {importResult.actualizados || 0}</div>}
+                                {importResult.errores?.length > 0 && (
+                                    <details style={{ marginTop: 6 }}>
+                                        <summary style={{ fontSize: 11, color: '#f43f5e', cursor: 'pointer' }}>Ver {importResult.errores.length} errores</summary>
+                                        <div style={{ fontSize: 11, fontFamily: 'monospace', marginTop: 4, maxHeight: 150, overflow: 'auto', color: 'var(--text-muted)' }}>
+                                            {importResult.errores.map((e, i) => <div key={i}>{e}</div>)}
+                                        </div>
+                                    </details>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     {/* Group KPI cards */}
                     <div className="kpi-grid" style={{ gridTemplateColumns: `repeat(${Object.keys(GRUPO_CONFIG).length}, 1fr)` }}>
                         {Object.entries(GRUPO_CONFIG).map(([key, cfg]) => {
