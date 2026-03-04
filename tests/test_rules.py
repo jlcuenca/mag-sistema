@@ -24,7 +24,7 @@ from api.rules import (
     es_reexpedicion,
     extraer_raiz_poliza,
     calcular_mystatus,
-    normalizar_poliza,
+    normalizar_poliza,supa
     agrupar_segmento,
     mapear_estatus_cubo,
     clasificar_cy,
