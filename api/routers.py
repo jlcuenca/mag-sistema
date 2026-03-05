@@ -1092,9 +1092,20 @@ async def importar_csv_polizas(
                     try:
                         ramo_codigo = int(float(ramo_col))
                     except Exception:
-                        ramo_codigo = 11 if "VIDA" in ramo_raw else 34
+                        # Fallback por nombre
+                        if "VIDA" in ramo_raw:
+                            ramo_codigo = 11
+                        elif "AUTO" in ramo_raw:
+                            ramo_codigo = 90
+                        else:
+                            ramo_codigo = 34
                 else:
-                    ramo_codigo = 11 if "VIDA" in ramo_raw else 34
+                    if "VIDA" in ramo_raw:
+                        ramo_codigo = 11
+                    elif "AUTO" in ramo_raw:
+                        ramo_codigo = 90
+                    else:
+                        ramo_codigo = 34
                 gama = clean(row.get("GAMA"))
 
                 prod = db.execute(text(
