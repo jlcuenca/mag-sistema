@@ -1112,6 +1112,22 @@ async def importar_csv_polizas(
                     "SELECT id FROM productos WHERE ramo_codigo = :rc ORDER BY id LIMIT 1"
                 ), {"rc": ramo_codigo}).scalar()
 
+                # Auto-crear producto si no existe
+                if not prod:
+                    RAMO_NOMBRES = {
+                        11: "VIDA",
+                        34: "GASTOS MEDICOS MAYORES INDIVIDUAL",
+                        90: "Individual Automoviles",
+                    }
+                    ramo_nombre = RAMO_NOMBRES.get(ramo_codigo, ramo_raw or f"RAMO_{ramo_codigo}")
+                    db.execute(text(
+                        "INSERT INTO productos (ramo_codigo, ramo_nombre, plan) VALUES (:rc, :rn, :pl)"
+                    ), {"rc": ramo_codigo, "rn": ramo_nombre, "pl": ramo_nombre})
+                    db.flush()
+                    prod = db.execute(text(
+                        "SELECT id FROM productos WHERE ramo_codigo = :rc ORDER BY id LIMIT 1"
+                    ), {"rc": ramo_codigo}).scalar()
+
                 # Fechas (soporta dd-MMM-yy estilo Oracle y yyyy-mm-dd)
                 def parse_date(v):
                     s = clean(v)

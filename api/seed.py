@@ -29,6 +29,7 @@ PRODUCTOS_DEMO = [
     {"ramo_codigo": 34, "ramo_nombre": "GASTOS MEDICOS MAYORES INDIVIDUAL", "plan": "FLEX PLUS",       "gama": "ESMERALDA"},
     {"ramo_codigo": 34, "ramo_nombre": "GASTOS MEDICOS MAYORES INDIVIDUAL", "plan": "FLEX PLUS",       "gama": "DIAMANTE"},
     {"ramo_codigo": 34, "ramo_nombre": "GASTOS MEDICOS MAYORES INDIVIDUAL", "plan": "FLEX PLUS",       "gama": "RUBI"},
+    {"ramo_codigo": 90, "ramo_nombre": "Individual Automoviles",             "plan": "AUTO",            "gama": None},
 ]
 
 METAS_DEMO = [
