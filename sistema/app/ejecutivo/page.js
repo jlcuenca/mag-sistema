@@ -48,6 +48,7 @@ export default function Ejecutivo() {
 
     const cg = data?.comparativo_gmm || {};
     const cv = data?.comparativo_vida || {};
+    const ca = data?.comparativo_autos || {};
     const segs = data?.segmentos || [];
     const agentes = useMemo(() => {
         if (!data?.agentes_operativo) return [];
@@ -77,7 +78,7 @@ export default function Ejecutivo() {
     }
 
     // Render comparativo panel for one ramo
-    function ComparativoPanel({ title, icon, comp, color }) {
+    function ComparativoPanel({ title, icon, comp, color, showEquiv, showAseg }) {
         return (
             <div className="card" style={{ borderTop: `3px solid ${color}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
@@ -99,10 +100,10 @@ export default function Ejecutivo() {
                         </thead>
                         <tbody>
                             <CompRow label="N° Pólizas Nuevas" ant={comp.polizas_anterior} act={comp.polizas_actual} variacion={comp.polizas_variacion} />
-                            {title === 'VIDA' && (
+                            {showEquiv && (
                                 <CompRow label="Equivalentes" ant={comp.equivalentes_anterior} act={comp.equivalentes_actual} variacion={comp.equivalentes_variacion} />
                             )}
-                            {title === 'GMM' && (
+                            {showAseg && (
                                 <CompRow label="Asegurados" ant={comp.asegurados_anterior} act={comp.asegurados_actual} variacion={comp.asegurados_variacion} />
                             )}
                             <CompRow label="Prima Venta Nueva" ant={comp.prima_nueva_anterior} act={comp.prima_nueva_actual} variacion={comp.prima_nueva_variacion} isMoney />
@@ -122,7 +123,7 @@ export default function Ejecutivo() {
                 <header className="header">
                     <div>
                         <div className="header-title">Vista Ejecutiva</div>
-                        <div className="header-subtitle">Comparativo interanual · Segmentos · Operativo por agente</div>
+                        <div className="header-subtitle">Comparativo interanual · Vida · GMM · Autos · Segmentos · Operativo</div>
                     </div>
                     <div className="header-right">
                         <select value={anio} onChange={e => setAnio(+e.target.value)} style={{ padding: '7px 12px' }}>
@@ -167,45 +168,41 @@ export default function Ejecutivo() {
                     ) : tab === 'directiva' ? (
                         <>
                             {/* ── KPI Summary Row ── */}
-                            <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-                                <div className="kpi-card blue">
-                                    <span className="kpi-icon">📋</span>
-                                    <div className="kpi-label">Pólizas GMM</div>
-                                    <div className="kpi-value">{cg.polizas_actual}</div>
-                                    <span className={varClass(cg.polizas_variacion)}>
-                                        {varIcon(cg.polizas_variacion)} {cg.polizas_variacion > 0 ? '+' : ''}{cg.polizas_variacion?.toFixed(1)}%
-                                    </span>
-                                </div>
-                                <div className="kpi-card emerald">
-                                    <span className="kpi-icon">💰</span>
-                                    <div className="kpi-label">Prima Total GMM</div>
-                                    <div className="kpi-value">{fmt(cg.prima_total_actual)}</div>
-                                    <span className={varClass(cg.prima_total_variacion)}>
-                                        {varIcon(cg.prima_total_variacion)} {cg.prima_total_variacion > 0 ? '+' : ''}{cg.prima_total_variacion?.toFixed(1)}%
-                                    </span>
-                                </div>
+                            <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                                {/* Vida */}
                                 <div className="kpi-card indigo">
-                                    <span className="kpi-icon">📋</span>
-                                    <div className="kpi-label">Pólizas Vida</div>
-                                    <div className="kpi-value">{cv.polizas_actual}</div>
-                                    <span className={varClass(cv.polizas_variacion)}>
-                                        {varIcon(cv.polizas_variacion)} {cv.polizas_variacion > 0 ? '+' : ''}{cv.polizas_variacion?.toFixed(1)}%
-                                    </span>
-                                </div>
-                                <div className="kpi-card purple">
-                                    <span className="kpi-icon">💰</span>
-                                    <div className="kpi-label">Prima Total Vida</div>
-                                    <div className="kpi-value">{fmt(cv.prima_total_actual)}</div>
+                                    <span className="kpi-icon">🛡️</span>
+                                    <div className="kpi-label">Vida — Pólizas / Prima</div>
+                                    <div className="kpi-value">{cv.polizas_actual} / {fmt(cv.prima_total_actual)}</div>
                                     <span className={varClass(cv.prima_total_variacion)}>
                                         {varIcon(cv.prima_total_variacion)} {cv.prima_total_variacion > 0 ? '+' : ''}{cv.prima_total_variacion?.toFixed(1)}%
                                     </span>
                                 </div>
+                                {/* GMM */}
+                                <div className="kpi-card emerald">
+                                    <span className="kpi-icon">🏥</span>
+                                    <div className="kpi-label">GMM — Pólizas / Prima</div>
+                                    <div className="kpi-value">{cg.polizas_actual} / {fmt(cg.prima_total_actual)}</div>
+                                    <span className={varClass(cg.prima_total_variacion)}>
+                                        {varIcon(cg.prima_total_variacion)} {cg.prima_total_variacion > 0 ? '+' : ''}{cg.prima_total_variacion?.toFixed(1)}%
+                                    </span>
+                                </div>
+                                {/* Autos */}
+                                <div className="kpi-card blue">
+                                    <span className="kpi-icon">🚗</span>
+                                    <div className="kpi-label">Autos — Pólizas / Prima</div>
+                                    <div className="kpi-value">{ca.polizas_actual} / {fmt(ca.prima_total_actual)}</div>
+                                    <span className={varClass(ca.prima_total_variacion)}>
+                                        {varIcon(ca.prima_total_variacion)} {ca.prima_total_variacion > 0 ? '+' : ''}{ca.prima_total_variacion?.toFixed(1)}%
+                                    </span>
+                                </div>
                             </div>
 
-                            {/* ── Comparativo tables side-by-side ── */}
-                            <div className="charts-grid" style={{ marginBottom: 28 }}>
-                                <ComparativoPanel title="GMM" icon="🏥" comp={cg} color="var(--accent-emerald)" />
-                                <ComparativoPanel title="VIDA" icon="🛡️" comp={cv} color="var(--accent-indigo)" />
+                            {/* ── Comparativo tables ── */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginBottom: 28 }}>
+                                <ComparativoPanel title="VIDA" icon="🛡️" comp={cv} color="#6366f1" showEquiv showAseg={false} />
+                                <ComparativoPanel title="GMM" icon="🏥" comp={cg} color="#10b981" showEquiv={false} showAseg />
+                                <ComparativoPanel title="AUTOS" icon="🚗" comp={ca} color="#3b82f6" showEquiv={false} showAseg={false} />
                             </div>
 
                             {/* ── Segmentos ── */}
@@ -225,6 +222,7 @@ export default function Ejecutivo() {
                                                 <Legend wrapperStyle={{ fontSize: 12 }} />
                                                 <Bar dataKey="prima_vida" name="Prima Vida" fill="#6366f1" radius={[4, 4, 0, 0]} />
                                                 <Bar dataKey="prima_gmm" name="Prima GMM" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                                <Bar dataKey="prima_autos" name="Prima Autos" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                                             </BarChart>
                                         </ResponsiveContainer>
                                     </div>
@@ -252,7 +250,7 @@ export default function Ejecutivo() {
                                                     <div style={{ width: 12, height: 12, borderRadius: 4, background: COLORS_SEG[s.segmento] || '#64748b', flexShrink: 0 }} />
                                                     <div>
                                                         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{s.segmento}</div>
-                                                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.num_agentes} agentes · {s.polizas_vida + s.polizas_gmm} pólizas</div>
+                                                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.num_agentes} agentes · {s.polizas_vida + s.polizas_gmm + s.polizas_autos} pólizas</div>
                                                         <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{fmtFull(s.prima_total)}</div>
                                                     </div>
                                                 </div>
@@ -263,7 +261,28 @@ export default function Ejecutivo() {
                             </div>
 
                             {/* ── Producción Mensual Comparativa ── */}
-                            <div className="charts-grid" style={{ marginBottom: 28 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginBottom: 28 }}>
+                                {/* Vida */}
+                                <div className="card">
+                                    <div style={{ marginBottom: 20 }}>
+                                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>Prima Vida — {data?.anio_anterior} vs {data?.anio_actual}</div>
+                                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Producción mensual comparativa</div>
+                                    </div>
+                                    <div className="chart-container">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <LineChart data={data?.mensual_vida || []} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                                                <XAxis dataKey="mes" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+                                                <YAxis tickFormatter={v => fmt(v)} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+                                                <Tooltip formatter={v => fmtFull(v)} contentStyle={{ background: '#1a2235', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10 }} labelStyle={{ color: '#f1f5f9' }} />
+                                                <Legend wrapperStyle={{ fontSize: 12 }} />
+                                                <Line type="monotone" dataKey="prima_anterior" name={`${data?.anio_anterior}`} stroke="#64748b" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: '#64748b', r: 3 }} />
+                                                <Line type="monotone" dataKey="prima_actual" name={`${data?.anio_actual}`} stroke="#6366f1" strokeWidth={2.5} dot={{ fill: '#6366f1', r: 4 }} activeDot={{ r: 6 }} />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                                {/* GMM */}
                                 <div className="card">
                                     <div style={{ marginBottom: 20 }}>
                                         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>Prima GMM — {data?.anio_anterior} vs {data?.anio_actual}</div>
@@ -283,21 +302,22 @@ export default function Ejecutivo() {
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
+                                {/* Autos */}
                                 <div className="card">
                                     <div style={{ marginBottom: 20 }}>
-                                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>Prima Vida — {data?.anio_anterior} vs {data?.anio_actual}</div>
+                                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>Prima Autos — {data?.anio_anterior} vs {data?.anio_actual}</div>
                                         <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Producción mensual comparativa</div>
                                     </div>
                                     <div className="chart-container">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={data?.mensual_vida || []} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                                            <LineChart data={data?.mensual_autos || []} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
                                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                                                 <XAxis dataKey="mes" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
                                                 <YAxis tickFormatter={v => fmt(v)} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
                                                 <Tooltip formatter={v => fmtFull(v)} contentStyle={{ background: '#1a2235', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10 }} labelStyle={{ color: '#f1f5f9' }} />
                                                 <Legend wrapperStyle={{ fontSize: 12 }} />
                                                 <Line type="monotone" dataKey="prima_anterior" name={`${data?.anio_anterior}`} stroke="#64748b" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: '#64748b', r: 3 }} />
-                                                <Line type="monotone" dataKey="prima_actual" name={`${data?.anio_actual}`} stroke="#6366f1" strokeWidth={2.5} dot={{ fill: '#6366f1', r: 4 }} activeDot={{ r: 6 }} />
+                                                <Line type="monotone" dataKey="prima_actual" name={`${data?.anio_actual}`} stroke="#3b82f6" strokeWidth={2.5} dot={{ fill: '#3b82f6', r: 4 }} activeDot={{ r: 6 }} />
                                             </LineChart>
                                         </ResponsiveContainer>
                                     </div>
@@ -326,21 +346,22 @@ export default function Ejecutivo() {
                                             <tr>
                                                 <th style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 2 }}>#</th>
                                                 <th style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 2, minWidth: 180 }}>Agente</th>
-                                                <th style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 2 }}>Segmento</th>
-                                                <th style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 2 }}>Gestión</th>
-                                                {/* Vida actual */}
-                                                <th style={{ position: 'sticky', top: 0, background: 'rgba(99,102,241,0.15)', zIndex: 2, textAlign: 'right' }}>Pol Vida</th>
-                                                <th style={{ position: 'sticky', top: 0, background: 'rgba(99,102,241,0.15)', zIndex: 2, textAlign: 'right' }}>Equiv</th>
-                                                <th style={{ position: 'sticky', top: 0, background: 'rgba(99,102,241,0.15)', zIndex: 2, textAlign: 'right' }}>Prima Vida</th>
-                                                {/* GMM actual */}
-                                                <th style={{ position: 'sticky', top: 0, background: 'rgba(16,185,129,0.15)', zIndex: 2, textAlign: 'right' }}>Pol GMM</th>
-                                                <th style={{ position: 'sticky', top: 0, background: 'rgba(16,185,129,0.15)', zIndex: 2, textAlign: 'right' }}>Aseg</th>
-                                                <th style={{ position: 'sticky', top: 0, background: 'rgba(16,185,129,0.15)', zIndex: 2, textAlign: 'right' }}>Prima GMM</th>
+                                                <th style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 2 }}>Seg</th>
+                                                {/* Vida */}
+                                                <th style={{ position: 'sticky', top: 0, background: 'rgba(99,102,241,0.15)', zIndex: 2, textAlign: 'right' }}>Pol V</th>
+                                                <th style={{ position: 'sticky', top: 0, background: 'rgba(99,102,241,0.15)', zIndex: 2, textAlign: 'right' }}>Prima V</th>
+                                                {/* GMM */}
+                                                <th style={{ position: 'sticky', top: 0, background: 'rgba(16,185,129,0.15)', zIndex: 2, textAlign: 'right' }}>Pol G</th>
+                                                <th style={{ position: 'sticky', top: 0, background: 'rgba(16,185,129,0.15)', zIndex: 2, textAlign: 'right' }}>Prima G</th>
+                                                {/* Autos */}
+                                                <th style={{ position: 'sticky', top: 0, background: 'rgba(59,130,246,0.15)', zIndex: 2, textAlign: 'right' }}>Pol A</th>
+                                                <th style={{ position: 'sticky', top: 0, background: 'rgba(59,130,246,0.15)', zIndex: 2, textAlign: 'right' }}>Prima A</th>
                                                 {/* Total */}
                                                 <th style={{ position: 'sticky', top: 0, background: 'rgba(245,158,11,0.15)', zIndex: 2, textAlign: 'right' }}>Total</th>
                                                 {/* Crecimientos */}
-                                                <th style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 2, textAlign: 'right' }}>Crec. Vida</th>
-                                                <th style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 2, textAlign: 'right' }}>Crec. GMM</th>
+                                                <th style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 2, textAlign: 'right' }}>Δ Vida</th>
+                                                <th style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 2, textAlign: 'right' }}>Δ GMM</th>
+                                                <th style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 2, textAlign: 'right' }}>Δ Auto</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -359,7 +380,7 @@ export default function Ejecutivo() {
                                                             <div className="avatar" style={{ width: 28, height: 28, fontSize: 10 }}>{(a.nombre || '?')[0]}</div>
                                                             <div>
                                                                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                                                                    {a.nombre?.length > 25 ? a.nombre.slice(0, 25) + '…' : a.nombre}
+                                                                    {a.nombre?.length > 22 ? a.nombre.slice(0, 22) + '…' : a.nombre}
                                                                 </div>
                                                                 <code style={{ background: 'rgba(59,130,246,0.1)', padding: '1px 5px', borderRadius: 3, fontSize: 10 }}>{a.clave}</code>
                                                             </div>
@@ -370,15 +391,15 @@ export default function Ejecutivo() {
                                                             {a.segmento_agrupado || '-'}
                                                         </span>
                                                     </td>
-                                                    <td style={{ fontSize: 11, color: 'var(--text-muted)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.gestion || '-'}</td>
                                                     {/* Vida */}
                                                     <td style={{ textAlign: 'right', background: 'rgba(99,102,241,0.04)' }}>{a.polizas_vida}</td>
-                                                    <td style={{ textAlign: 'right', background: 'rgba(99,102,241,0.04)' }}>{a.equiv_vida}</td>
                                                     <td style={{ textAlign: 'right', fontWeight: 600, background: 'rgba(99,102,241,0.04)' }}>{fmt(a.prima_pagada_vida)}</td>
                                                     {/* GMM */}
                                                     <td style={{ textAlign: 'right', background: 'rgba(16,185,129,0.04)' }}>{a.polizas_gmm}</td>
-                                                    <td style={{ textAlign: 'right', background: 'rgba(16,185,129,0.04)' }}>{a.asegurados_gmm}</td>
                                                     <td style={{ textAlign: 'right', fontWeight: 600, background: 'rgba(16,185,129,0.04)' }}>{fmt(a.prima_pagada_gmm)}</td>
+                                                    {/* Autos */}
+                                                    <td style={{ textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}>{a.polizas_autos}</td>
+                                                    <td style={{ textAlign: 'right', fontWeight: 600, background: 'rgba(59,130,246,0.04)' }}>{fmt(a.prima_pagada_autos)}</td>
                                                     {/* Total */}
                                                     <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)', background: 'rgba(245,158,11,0.04)' }}>{fmt(a.prima_pagada_total)}</td>
                                                     {/* Crecimientos */}
@@ -390,6 +411,11 @@ export default function Ejecutivo() {
                                                     <td style={{ textAlign: 'right' }}>
                                                         <span className={varClass(a.gmm_crecimiento)} style={{ fontSize: 11 }}>
                                                             {a.gmm_crecimiento > 0 ? '+' : ''}{a.gmm_crecimiento?.toFixed(1)}%
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ textAlign: 'right' }}>
+                                                        <span className={varClass(a.autos_crecimiento)} style={{ fontSize: 11 }}>
+                                                            {a.autos_crecimiento > 0 ? '+' : ''}{a.autos_crecimiento?.toFixed(1)}%
                                                         </span>
                                                     </td>
                                                 </tr>

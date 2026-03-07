@@ -257,11 +257,12 @@ def get_dashboard_ejecutivo(
 
     comp_gmm = build_comparativo("GMM", 34, pol_act, pol_ant)
     comp_vida = build_comparativo("VIDA", 11, pol_act, pol_ant)
+    comp_autos = build_comparativo("AUTOS", 90, pol_act, pol_ant)
 
     # ── 2. RESUMEN POR SEGMENTO ──
     seg_data = defaultdict(lambda: {
-        "agentes": set(), "polizas_vida": 0, "polizas_gmm": 0,
-        "prima_vida": 0.0, "prima_gmm": 0.0, "equivalentes": 0.0,
+        "agentes": set(), "polizas_vida": 0, "polizas_gmm": 0, "polizas_autos": 0,
+        "prima_vida": 0.0, "prima_gmm": 0.0, "prima_autos": 0.0, "equivalentes": 0.0,
     })
     for p in pol_act:
         seg = p["segmento_agrupado"] or "SIN SEGMENTO"
@@ -274,6 +275,9 @@ def get_dashboard_ejecutivo(
         elif p["ramo_codigo"] == 34 and p["tipo_poliza"] == "NUEVA":
             seg_data[seg]["polizas_gmm"] += 1
             seg_data[seg]["prima_gmm"] += (p["prima_neta"] or 0)
+        elif p["ramo_codigo"] == 90 and p["tipo_poliza"] == "NUEVA":
+            seg_data[seg]["polizas_autos"] += 1
+            seg_data[seg]["prima_autos"] += (p["prima_neta"] or 0)
 
     segmentos_res = []
     for seg_name in ["ALFA", "BETA", "OMEGA", "SIN SEGMENTO"]:
@@ -284,9 +288,11 @@ def get_dashboard_ejecutivo(
                 num_agentes=len(d["agentes"]),
                 polizas_vida=d["polizas_vida"],
                 polizas_gmm=d["polizas_gmm"],
+                polizas_autos=d["polizas_autos"],
                 prima_vida=round(d["prima_vida"], 2),
                 prima_gmm=round(d["prima_gmm"], 2),
-                prima_total=round(d["prima_vida"] + d["prima_gmm"], 2),
+                prima_autos=round(d["prima_autos"], 2),
+                prima_total=round(d["prima_vida"] + d["prima_gmm"] + d["prima_autos"], 2),
                 equivalentes=round(d["equivalentes"], 1),
             ))
 
@@ -297,6 +303,7 @@ def get_dashboard_ejecutivo(
         # Actual
         "polizas_vida": 0, "equiv_vida": 0.0, "prima_pagada_vida": 0.0,
         "polizas_gmm": 0, "asegurados_gmm": 0, "prima_pagada_gmm": 0.0,
+        "polizas_autos": 0, "prima_pagada_autos": 0.0,
         # Anterior GMM
         "gmm_polizas_ant": 0, "gmm_prima_nueva_ant": 0.0, "gmm_prima_sub_ant": 0.0,
         # Actual GMM
@@ -307,6 +314,10 @@ def get_dashboard_ejecutivo(
         # Actual Vida
         "vida_polizas_act": 0, "vida_equiv_act": 0.0,
         "vida_prima_nueva_act": 0.0, "vida_prima_sub_act": 0.0,
+        # Anterior Autos
+        "autos_polizas_ant": 0, "autos_prima_nueva_ant": 0.0, "autos_prima_sub_ant": 0.0,
+        # Actual Autos
+        "autos_polizas_act": 0, "autos_prima_nueva_act": 0.0, "autos_prima_sub_act": 0.0,
     })
 
     for p in all_polizas:
@@ -323,6 +334,7 @@ def get_dashboard_ejecutivo(
         is_ant = p["anio_aplicacion"] == anio_ant
         is_vida = p["ramo_codigo"] == 11
         is_gmm = p["ramo_codigo"] == 34
+        is_autos = p["ramo_codigo"] == 90
         is_nueva = p["tipo_poliza"] == "NUEVA"
         is_sub = p["tipo_poliza"] == "SUBSECUENTE"
         prima = p["prima_neta"] or 0
@@ -356,6 +368,18 @@ def get_dashboard_ejecutivo(
             a["gmm_prima_nueva_ant"] += prima
         elif is_ant and is_gmm and is_sub:
             a["gmm_prima_sub_ant"] += prima
+        elif is_act and is_autos and is_nueva:
+            a["polizas_autos"] += 1
+            a["prima_pagada_autos"] += prima
+            a["autos_polizas_act"] += 1
+            a["autos_prima_nueva_act"] += prima
+        elif is_act and is_autos and is_sub:
+            a["autos_prima_sub_act"] += prima
+        elif is_ant and is_autos and is_nueva:
+            a["autos_polizas_ant"] += 1
+            a["autos_prima_nueva_ant"] += prima
+        elif is_ant and is_autos and is_sub:
+            a["autos_prima_sub_ant"] += prima
 
     # Buscar metas por agente
     metas_raw = db.execute(text("""
@@ -372,11 +396,13 @@ def get_dashboard_ejecutivo(
 
     agentes_operativo = []
     for _, a in sorted(agentes_map.items(), key=lambda x: x[1]["prima_pagada_vida"] + x[1]["prima_pagada_gmm"], reverse=True):
-        prima_total = a["prima_pagada_vida"] + a["prima_pagada_gmm"]
+        prima_total = a["prima_pagada_vida"] + a["prima_pagada_gmm"] + a["prima_pagada_autos"]
         gmm_total_ant = a["gmm_prima_nueva_ant"] + a["gmm_prima_sub_ant"]
         gmm_total_act = a["gmm_prima_nueva_act"] + a["gmm_prima_sub_act"]
         vida_total_ant = a["vida_prima_nueva_ant"] + a["vida_prima_sub_ant"]
         vida_total_act = a["vida_prima_nueva_act"] + a["vida_prima_sub_act"]
+        autos_total_ant = a["autos_prima_nueva_ant"] + a["autos_prima_sub_ant"]
+        autos_total_act = a["autos_prima_nueva_act"] + a["autos_prima_sub_act"]
 
         # Metas
         meta = metas_by_agente.get(a["clave"])
@@ -413,6 +439,15 @@ def get_dashboard_ejecutivo(
             vida_prima_sub_act=round(a["vida_prima_sub_act"], 2),
             vida_total_ant=round(vida_total_ant, 2), vida_total_act=round(vida_total_act, 2),
             vida_crecimiento=_var_pct(vida_total_act, vida_total_ant),
+            polizas_autos=a["polizas_autos"],
+            prima_pagada_autos=round(a["prima_pagada_autos"], 2),
+            autos_polizas_ant=a["autos_polizas_ant"], autos_polizas_act=a["autos_polizas_act"],
+            autos_prima_nueva_ant=round(a["autos_prima_nueva_ant"], 2),
+            autos_prima_nueva_act=round(a["autos_prima_nueva_act"], 2),
+            autos_prima_sub_ant=round(a["autos_prima_sub_ant"], 2),
+            autos_prima_sub_act=round(a["autos_prima_sub_act"], 2),
+            autos_total_ant=round(autos_total_ant, 2), autos_total_act=round(autos_total_act, 2),
+            autos_crecimiento=_var_pct(autos_total_act, autos_total_ant),
         ))
 
     if top_n > 0:
@@ -450,6 +485,7 @@ def get_dashboard_ejecutivo(
 
     mensual_gmm = build_mensual_comp(34, pol_act, pol_ant)
     mensual_vida = build_mensual_comp(11, pol_act, pol_ant)
+    mensual_autos = build_mensual_comp(90, pol_act, pol_ant)
 
     # ── Filtros disponibles ──
     segmentos_db = db.execute(text("SELECT DISTINCT segmento_agrupado FROM agentes WHERE segmento_agrupado IS NOT NULL")).scalars().all()
@@ -458,10 +494,12 @@ def get_dashboard_ejecutivo(
     return EjecutivoResponse(
         comparativo_gmm=comp_gmm,
         comparativo_vida=comp_vida,
+        comparativo_autos=comp_autos,
         segmentos=segmentos_res,
         agentes_operativo=agentes_operativo,
         mensual_gmm=mensual_gmm,
         mensual_vida=mensual_vida,
+        mensual_autos=mensual_autos,
         anio_actual=anio,
         anio_anterior=anio_ant,
         filtros_disponibles={

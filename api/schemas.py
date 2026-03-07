@@ -183,8 +183,10 @@ class ResumenSegmento(BaseModel):
     num_agentes: int = 0
     polizas_vida: int = 0
     polizas_gmm: int = 0
+    polizas_autos: int = 0
     prima_vida: float = 0
     prima_gmm: float = 0
+    prima_autos: float = 0
     prima_total: float = 0
     equivalentes: float = 0
 
@@ -237,6 +239,19 @@ class AgenteOperativo(BaseModel):
     vida_total_ant: float = 0
     vida_total_act: float = 0
     vida_crecimiento: float = 0
+    # Comparativo Autos
+    autos_polizas_ant: int = 0
+    autos_polizas_act: int = 0
+    autos_prima_nueva_ant: float = 0
+    autos_prima_nueva_act: float = 0
+    autos_prima_sub_ant: float = 0
+    autos_prima_sub_act: float = 0
+    autos_total_ant: float = 0
+    autos_total_act: float = 0
+    autos_crecimiento: float = 0
+    # Autos actual
+    polizas_autos: int = 0
+    prima_pagada_autos: float = 0
 
 
 class ProduccionMensualComparativo(BaseModel):
@@ -252,10 +267,12 @@ class ProduccionMensualComparativo(BaseModel):
 class EjecutivoResponse(BaseModel):
     comparativo_gmm: ComparativoRamo
     comparativo_vida: ComparativoRamo
+    comparativo_autos: Optional[ComparativoRamo] = None
     segmentos: List[ResumenSegmento]
     agentes_operativo: List[AgenteOperativo]
     mensual_gmm: List[ProduccionMensualComparativo]
     mensual_vida: List[ProduccionMensualComparativo]
+    mensual_autos: Optional[List[ProduccionMensualComparativo]] = None
     anio_actual: int
     anio_anterior: int
     filtros_disponibles: dict = {}
