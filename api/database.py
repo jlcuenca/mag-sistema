@@ -315,6 +315,38 @@ class Conciliacion(Base):
     created_at = Column(String(30), default=lambda: datetime.now().isoformat())
 
 
+# ══════════════════════════════════════════════════════════════════
+# PAGOS (PAGTOTAL — registro de pagos completados)
+# ══════════════════════════════════════════════════════════════════
+
+class Pago(Base):
+    """Registro de pagos desde PAGTOTAL — una fila por pago realizado."""
+    __tablename__ = "pagos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    poliza_numero = Column(String(30), index=True, nullable=False)
+    endoso = Column(String(30))
+    agente_codigo = Column(String(20), index=True)
+    contratante = Column(String(200))
+    ramo = Column(String(100))
+    moneda = Column(String(10), default="MN")
+    fecha_inicio = Column(String(10))
+    fecha_aplicacion = Column(String(10), index=True)
+    comprobante = Column(String(30))
+    prima_neta = Column(Float, default=0)
+    prima_total = Column(Float, default=0)
+    comision = Column(Float, default=0)
+    comision_derecho = Column(Float, default=0)
+    comision_recargo = Column(Float, default=0)
+    comision_total = Column(Float, default=0)
+    promotor = Column(String(20))
+    poliza_match = Column(String(30), index=True)
+    anio_aplicacion = Column(Integer, index=True)
+    periodo_aplicacion = Column(String(7))
+    fuente = Column(String(50), default="PAGTOTAL")
+    created_at = Column(String(30), default=lambda: datetime.now().isoformat())
+
+
 class GestionComercial(Base):
     """Gestiones comerciales — líderes y asignación de agentes (Fase 3.5)"""
     __tablename__ = "gestiones_comerciales"

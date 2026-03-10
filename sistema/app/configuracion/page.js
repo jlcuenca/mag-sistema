@@ -26,6 +26,13 @@ export default function Configuracion() {
     const [dragOver, setDragOver] = useState(false);
     const fileInputRef = useRef(null);
 
+    // ── PAGTOTAL import state ──
+    const [pagtotalFile, setPagtotalFile] = useState(null);
+    const [importingPagtotal, setImportingPagtotal] = useState(false);
+    const [pagtotalResult, setPagtotalResult] = useState(null);
+    const [dragOverPagtotal, setDragOverPagtotal] = useState(false);
+    const pagtotalInputRef = useRef(null);
+
     const handleImportExcel = async () => {
         if (!importFile) return;
         setImporting(true);
@@ -46,6 +53,35 @@ export default function Configuracion() {
             setImportResult({ ok: false, mensaje: e.message, errores: [] });
         }
         setImporting(false);
+    };
+
+    const handleImportPagtotal = async () => {
+        if (!pagtotalFile) return;
+        setImportingPagtotal(true);
+        setPagtotalResult(null);
+        try {
+            const formData = new FormData();
+            formData.append('archivo', pagtotalFile);
+            const res = await fetch(`${API_URL}/importar/pagtotal`, {
+                method: 'POST',
+                body: formData,
+            });
+            const result = await res.json();
+            if (!res.ok) throw new Error(result.detail || `Error ${res.status}`);
+            setPagtotalResult(result);
+            setPagtotalFile(null);
+            if (pagtotalInputRef.current) pagtotalInputRef.current.value = '';
+        } catch (e) {
+            setPagtotalResult({ ok: false, mensaje: e.message, errores: [] });
+        }
+        setImportingPagtotal(false);
+    };
+
+    const handleDropPagtotal = (e) => {
+        e.preventDefault();
+        setDragOverPagtotal(false);
+        const file = e.dataTransfer?.files?.[0];
+        if (file) setPagtotalFile(file);
     };
 
     const handleApplyRules = async () => {
@@ -201,6 +237,79 @@ export default function Configuracion() {
                                         <summary style={{ fontSize: 11, color: '#f43f5e', cursor: 'pointer' }}>Ver {importResult.errores.length} errores</summary>
                                         <div style={{ fontSize: 11, fontFamily: 'monospace', marginTop: 4, maxHeight: 150, overflow: 'auto', color: 'var(--text-muted)' }}>
                                             {importResult.errores.map((e, i) => <div key={i}>{e}</div>)}
+                                        </div>
+                                    </details>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* ── IMPORT PAGTOTAL PANEL ── */}
+                    <div className="card" style={{ marginBottom: 20, background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(239,68,68,0.08))' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                            <span style={{ fontSize: 24 }}>💰</span>
+                            <div>
+                                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Importar Pagos (PAGTOTAL)</div>
+                                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Sube el archivo PAGTOTAL Excel con 160K+ registros de pagos</div>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'stretch', flexWrap: 'wrap' }}>
+                            <div
+                                onDragOver={(e) => { e.preventDefault(); setDragOverPagtotal(true); }}
+                                onDragLeave={() => setDragOverPagtotal(false)}
+                                onDrop={handleDropPagtotal}
+                                onClick={() => pagtotalInputRef.current?.click()}
+                                style={{
+                                    flex: 1, minWidth: 250, padding: '24px 20px',
+                                    border: `2px dashed ${dragOverPagtotal ? '#f59e0b' : 'var(--border)'}`,
+                                    borderRadius: 12, textAlign: 'center', cursor: 'pointer',
+                                    background: dragOverPagtotal ? 'rgba(245,158,11,0.1)' : 'var(--bg-main)',
+                                    transition: 'all 0.2s',
+                                }}
+                            >
+                                <input ref={pagtotalInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }}
+                                    onChange={(e) => setPagtotalFile(e.target.files[0])} />
+                                {pagtotalFile ? (
+                                    <div>
+                                        <div style={{ fontSize: 28, marginBottom: 6 }}>💰</div>
+                                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{pagtotalFile.name}</div>
+                                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{(pagtotalFile.size / 1024 / 1024).toFixed(1)} MB — Listo para importar</div>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <div style={{ fontSize: 28, marginBottom: 6 }}>📂</div>
+                                        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Arrastra PAGTOTAL aquí o <span style={{ color: '#f59e0b', fontWeight: 600 }}>haz clic para buscar</span></div>
+                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Formato: .xlsx con columnas POLIZA, AGENTE, NETA, FECAPLI, etc.</div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 180 }}>
+                                <button className="btn btn-primary" disabled={!pagtotalFile || importingPagtotal}
+                                    onClick={handleImportPagtotal}
+                                    style={{ padding: '12px 20px', fontSize: 13, flex: 1, opacity: !pagtotalFile ? 0.5 : 1, background: 'linear-gradient(135deg, #f59e0b, #ef4444)' }}>
+                                    {importingPagtotal ? '⏳ Importando Pagos...' : '💰 Importar PAGTOTAL'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {pagtotalResult && (
+                            <div style={{
+                                marginTop: 14, padding: '12px 16px', borderRadius: 10,
+                                background: pagtotalResult.ok !== false ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)',
+                                border: `1px solid ${pagtotalResult.ok !== false ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.3)'}`,
+                            }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: pagtotalResult.ok !== false ? '#10b981' : '#f43f5e', marginBottom: 4 }}>
+                                    {pagtotalResult.ok !== false ? '✅ PAGTOTAL importado' : '❌ Error en importación'}
+                                </div>
+                                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{pagtotalResult.mensaje}</div>
+                                {pagtotalResult.registros_nuevos > 0 && <div style={{ fontSize: 12, color: '#10b981', marginTop: 2 }}>📊 Pagos: {pagtotalResult.registros_nuevos} | Pólizas actualizadas: {pagtotalResult.registros_actualizados || 0}</div>}
+                                {pagtotalResult.errores?.length > 0 && (
+                                    <details style={{ marginTop: 6 }}>
+                                        <summary style={{ fontSize: 11, color: '#f59e0b', cursor: 'pointer' }}>Ver {pagtotalResult.errores.length} mensajes</summary>
+                                        <div style={{ fontSize: 11, fontFamily: 'monospace', marginTop: 4, maxHeight: 150, overflow: 'auto', color: 'var(--text-muted)' }}>
+                                            {pagtotalResult.errores.map((e, i) => <div key={i}>{e}</div>)}
                                         </div>
                                     </details>
                                 )}

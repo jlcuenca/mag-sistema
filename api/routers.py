@@ -12,7 +12,7 @@ from collections import defaultdict
 
 from .database import (
     get_db, Agente, Poliza, Producto, IndicadorAxa, Meta, Importacion,
-    Segmento, Recibo, Conciliacion, Presupuesto,
+    Segmento, Recibo, Conciliacion, Presupuesto, Pago,
     Contratante, Solicitud, DistribucionComision, Configuracion,
 )
 from .schemas import (
@@ -1495,6 +1495,191 @@ async def importar_indicadores_axa(
 
     except Exception as e:
         raise HTTPException(500, f"Error procesando indicadores: {str(e)}")
+
+
+@router_importacion.post("/pagtotal", response_model=ImportacionResult)
+async def importar_pagtotal(
+    archivo: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Importa pagos desde archivo PAGTOTAL (Excel).
+    1. Limpia tabla pagos
+    2. Importa todas las filas con campos mapeados
+    3. Actualiza prima_acumulada_basica en pólizas
+    """
+    if not archivo.filename.endswith((".xlsx", ".xls", ".xlsb", ".csv")):
+        raise HTTPException(400, "Solo se aceptan archivos Excel (.xlsx/.xls) o CSV")
+
+    contenido = await archivo.read()
+    errores = []
+    nuevos = 0
+
+    try:
+        # ── Paso 0: Limpiar tabla pagos ──
+        count_antes = db.execute(text("SELECT COUNT(*) FROM pagos")).scalar() or 0
+        db.execute(text("DELETE FROM pagos"))
+        db.commit()
+        errores.append(f"INFO: Tabla pagos limpiada ({count_antes} registros anteriores)")
+
+        # ── Paso 1: Leer archivo ──
+        if archivo.filename.endswith(".csv"):
+            for enc in ["utf-8", "latin-1", "cp1252"]:
+                try:
+                    df = pd.read_csv(io.BytesIO(contenido), encoding=enc, dtype=str)
+                    break
+                except:
+                    continue
+            else:
+                raise HTTPException(400, "No se pudo decodificar el CSV")
+        else:
+            xls = pd.ExcelFile(io.BytesIO(contenido))
+            hoja = xls.sheet_names[0]
+            df = pd.read_excel(xls, sheet_name=hoja, dtype=str)
+            errores.append(f"INFO: Leyendo hoja '{hoja}'")
+
+        df.columns = [c.strip().upper() for c in df.columns]
+        df = df.where(pd.notna(df), None)
+        errores.append(f"INFO: {len(df)} filas, {len(df.columns)} columnas")
+
+        # ── Paso 2: Importar filas ──
+        batch = []
+        for i, row in df.iterrows():
+            try:
+                poliza = (row.get("POLIZA") or "").strip()
+                if not poliza or poliza == "nan":
+                    continue
+
+                # Parse fecha
+                def parse_dt(v):
+                    if not v or str(v).strip() in ("", "nan", "None"):
+                        return None
+                    s = str(v).strip()[:10]
+                    for fmt_str in ("%Y-%m-%d", "%d-%b-%y", "%d/%m/%Y"):
+                        try:
+                            from datetime import datetime as _dt
+                            return _dt.strptime(s, fmt_str).strftime("%Y-%m-%d")
+                        except:
+                            continue
+                    return s[:10] if len(s) >= 10 else None
+
+                def to_float(v):
+                    try:
+                        return float(str(v).replace(",", "").strip()) if v and str(v).strip() not in ("", "nan") else 0
+                    except:
+                        return 0
+
+                fec_apli = parse_dt(row.get("FECAPLI"))
+                anio = int(fec_apli[:4]) if fec_apli and len(fec_apli) >= 4 else None
+                periodo = f"{fec_apli[:7]}" if fec_apli and len(fec_apli) >= 7 else None
+
+                batch.append({
+                    "poliza_numero": poliza,
+                    "endoso": (row.get("ENDOSO") or "").strip() or None,
+                    "agente_codigo": (row.get("AGENTE") or "").strip() or None,
+                    "contratante": (row.get("CONTRATANTE") or "").strip() or None,
+                    "ramo": (row.get("RAMO") or "").strip() or None,
+                    "moneda": (row.get("MON") or "MN").strip(),
+                    "fecha_inicio": parse_dt(row.get("PERINI")),
+                    "fecha_aplicacion": fec_apli,
+                    "comprobante": (row.get("COMPROBANTE") or "").strip() or None,
+                    "prima_neta": to_float(row.get("NETA")),
+                    "prima_total": to_float(row.get("PRITOT")),
+                    "comision": to_float(row.get("COMISION")),
+                    "comision_derecho": to_float(row.get("COMDERECHO")),
+                    "comision_recargo": to_float(row.get("COMRECARGO")),
+                    "comision_total": to_float(row.get("TOTCOMISION")),
+                    "promotor": (row.get("PROMOTOR") or "").strip() or None,
+                    "poliza_match": (row.get("POLIZA_MATCH") or poliza).strip(),
+                    "anio_aplicacion": anio,
+                    "periodo_aplicacion": periodo,
+                    "fuente": "PAGTOTAL",
+                })
+                nuevos += 1
+
+                # Batch insert every 5000 rows
+                if len(batch) >= 5000:
+                    db.execute(text("""
+                        INSERT INTO pagos (
+                            poliza_numero, endoso, agente_codigo, contratante, ramo, moneda,
+                            fecha_inicio, fecha_aplicacion, comprobante,
+                            prima_neta, prima_total, comision, comision_derecho, comision_recargo,
+                            comision_total, promotor, poliza_match,
+                            anio_aplicacion, periodo_aplicacion, fuente
+                        ) VALUES (
+                            :poliza_numero, :endoso, :agente_codigo, :contratante, :ramo, :moneda,
+                            :fecha_inicio, :fecha_aplicacion, :comprobante,
+                            :prima_neta, :prima_total, :comision, :comision_derecho, :comision_recargo,
+                            :comision_total, :promotor, :poliza_match,
+                            :anio_aplicacion, :periodo_aplicacion, :fuente
+                        )
+                    """), batch)
+                    db.flush()
+                    batch = []
+
+            except Exception as e:
+                errores.append(f"Fila {i+2}: {str(e)}")
+
+        # Insert remaining
+        if batch:
+            db.execute(text("""
+                INSERT INTO pagos (
+                    poliza_numero, endoso, agente_codigo, contratante, ramo, moneda,
+                    fecha_inicio, fecha_aplicacion, comprobante,
+                    prima_neta, prima_total, comision, comision_derecho, comision_recargo,
+                    comision_total, promotor, poliza_match,
+                    anio_aplicacion, periodo_aplicacion, fuente
+                ) VALUES (
+                    :poliza_numero, :endoso, :agente_codigo, :contratante, :ramo, :moneda,
+                    :fecha_inicio, :fecha_aplicacion, :comprobante,
+                    :prima_neta, :prima_total, :comision, :comision_derecho, :comision_recargo,
+                    :comision_total, :promotor, :poliza_match,
+                    :anio_aplicacion, :periodo_aplicacion, :fuente
+                )
+            """), batch)
+
+        db.commit()
+
+        # ── Paso 3: Actualizar prima_acumulada_basica en pólizas ──
+        updated = db.execute(text("""
+            UPDATE polizas SET prima_acumulada_basica = sub.total_pagado
+            FROM (
+                SELECT poliza_match, SUM(prima_neta) as total_pagado
+                FROM pagos
+                GROUP BY poliza_match
+            ) sub
+            WHERE polizas.poliza_original = sub.poliza_match
+        """)).rowcount
+        db.commit()
+        errores.append(f"INFO: prima_acumulada_basica actualizada en {updated} pólizas")
+
+        # Log
+        log = Importacion(
+            tipo="PAGTOTAL",
+            archivo_nombre=archivo.filename,
+            registros_procesados=nuevos,
+            registros_nuevos=nuevos,
+            registros_actualizados=0,
+            registros_error=len([e for e in errores if not e.startswith("INFO:")]),
+            errores_detalle="\n".join(errores[:50]) if errores else None,
+        )
+        db.add(log)
+        db.commit()
+
+        return ImportacionResult(
+            success=True,
+            registros_procesados=nuevos,
+            registros_nuevos=nuevos,
+            registros_actualizados=updated or 0,
+            registros_error=len([e for e in errores if not e.startswith("INFO:")]),
+            errores=errores[:20],
+            mensaje=f"PAGTOTAL importado: {nuevos} pagos, {updated or 0} pólizas actualizadas"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Error procesando PAGTOTAL: {str(e)}")
 
 
 # ═══════════════════════════════════════════════════════════════════
