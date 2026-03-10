@@ -84,6 +84,7 @@ export default function Cobranza() {
                             <option value="">Todos ramos</option>
                             <option value="vida">Vida</option>
                             <option value="gmm">GMM</option>
+                            <option value="autos">Autos</option>
                         </select>
                         <select value={prioFiltro} onChange={e => setPrioFiltro(e.target.value)} style={{ padding: '7px 12px' }}>
                             <option value="">Todas prioridades</option>

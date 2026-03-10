@@ -569,6 +569,8 @@ def get_cobranza(
         filtro_ramo = " AND pr.ramo_codigo = 11"
     elif ramo == "gmm":
         filtro_ramo = " AND pr.ramo_codigo = 34"
+    elif ramo == "autos":
+        filtro_ramo = " AND pr.ramo_codigo = 90"
 
     filtro_agente = ""
     params = {"anio": anio}
@@ -580,10 +582,15 @@ def get_cobranza(
     rows = db.execute(text(f"""
         SELECT p.*, pr.ramo_codigo, pr.ramo_nombre, pr.plan as producto_plan,
                a.codigo_agente, a.nombre_completo as agente_nombre,
-               a.segmento_nombre
+               a.segmento_nombre,
+               COALESCE(pag.total_pagado, 0) as pagos_total
         FROM polizas p
         LEFT JOIN productos pr ON p.producto_id = pr.id
         LEFT JOIN agentes a ON p.agente_id = a.id
+        LEFT JOIN (
+            SELECT poliza_match, SUM(prima_neta) as total_pagado
+            FROM pagos GROUP BY poliza_match
+        ) pag ON p.poliza_original = pag.poliza_match
         WHERE p.anio_aplicacion = :anio {filtro_ramo} {filtro_agente}
         ORDER BY p.fecha_inicio DESC
     """), params).mappings().all()
@@ -592,7 +599,12 @@ def get_cobranza(
     for p in rows:
         prima_neta = p["prima_neta"] or 0
         prima_total = p["prima_total"] or prima_neta
-        prima_acum = p["prima_acumulada_basica"] or p["neta_acumulada"] or 0
+        # Use best available data: poliza field, pagos aggregate, or neta_acumulada
+        prima_acum = max(
+            p["prima_acumulada_basica"] or 0,
+            p["pagos_total"] or 0,
+            p["neta_acumulada"] or 0,
+        )
         prima_pendiente = max(0, prima_neta - prima_acum)
         mystatus = p["mystatus"] or ""
 
