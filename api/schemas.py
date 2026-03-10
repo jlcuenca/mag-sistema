@@ -113,8 +113,11 @@ class KPIs(BaseModel):
     polizas_nuevas_gmm: int = 0
     asegurados_nuevos_gmm: int = 0
     prima_nueva_gmm: float = 0
+    polizas_nuevas_autos: int = 0
+    prima_nueva_autos: float = 0
     prima_subsecuente_vida: float = 0
     prima_subsecuente_gmm: float = 0
+    prima_subsecuente_autos: float = 0
     polizas_canceladas: int = 0
     total_polizas: int = 0
     meta_vida: int = 0
@@ -127,8 +130,10 @@ class ProduccionMensual(BaseModel):
     periodo: str
     polizas_vida: int = 0
     polizas_gmm: int = 0
+    polizas_autos: int = 0
     prima_vida: float = 0
     prima_gmm: float = 0
+    prima_autos: float = 0
 
 
 class TopAgente(BaseModel):

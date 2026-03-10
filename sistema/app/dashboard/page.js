@@ -38,19 +38,20 @@ export default function Dashboard() {
         mes: MESES[m.periodo?.slice(5)] || m.periodo,
         prima_vida: Math.round(m.prima_vida || 0),
         prima_gmm: Math.round(m.prima_gmm || 0),
+        prima_autos: Math.round(m.prima_autos || 0),
     }));
     const gamas = data?.distribucion_gama || [];
     const topAgentes = data?.top_agentes || [];
 
     const kpiCards = [
-        { label: 'Polizas Nuevas Vida', value: k.polizas_nuevas_vida || 0, meta: k.meta_vida, icon: '🏥', color: 'blue', sub: `Meta: ${k.meta_vida || 0}` },
+        { label: 'Polizas Nuevas Vida', value: k.polizas_nuevas_vida || 0, meta: k.meta_vida, icon: '🛡️', color: 'indigo', sub: `Meta: ${k.meta_vida || 0}` },
         { label: 'Prima Nueva Vida', value: fmt(k.prima_nueva_vida || 0), meta: null, icon: '💰', color: 'indigo', sub: `Meta: ${fmt(k.meta_prima_vida || 0)}` },
         { label: 'Polizas Nuevas GMM', value: k.polizas_nuevas_gmm || 0, meta: k.meta_gmm, icon: '🏥', color: 'emerald', sub: `Meta: ${k.meta_gmm || 0}` },
-        { label: 'Asegurados Nuevos GMM', value: k.asegurados_nuevos_gmm || 0, meta: null, icon: '👥', color: 'cyan', sub: 'Primer año' },
-        { label: 'Prima Nueva GMM', value: fmt(k.prima_nueva_gmm || 0), meta: null, icon: '💵', color: 'purple', sub: `Meta: ${fmt(k.meta_prima_gmm || 0)}` },
-        { label: 'Prima Subsec. Vida', value: fmt(k.prima_subsecuente_vida || 0), meta: null, icon: '🔄', color: 'amber', sub: 'Renovaciones' },
-        { label: 'Prima Subsec. GMM', value: fmt(k.prima_subsecuente_gmm || 0), meta: null, icon: '🔁', color: 'orange', sub: 'Renovaciones' },
-        { label: 'Canceladas', value: k.polizas_canceladas || 0, meta: null, icon: '⚠️', color: 'rose', sub: 'Total polizas' },
+        { label: 'Prima Nueva GMM', value: fmt(k.prima_nueva_gmm || 0), meta: null, icon: '💵', color: 'emerald', sub: `Meta: ${fmt(k.meta_prima_gmm || 0)}` },
+        { label: 'Polizas Nuevas Autos', value: k.polizas_nuevas_autos || 0, meta: null, icon: '🚗', color: 'blue', sub: 'Primer año' },
+        { label: 'Prima Nueva Autos', value: fmt(k.prima_nueva_autos || 0), meta: null, icon: '💵', color: 'blue', sub: 'Primer año' },
+        { label: 'Asegurados GMM', value: k.asegurados_nuevos_gmm || 0, meta: null, icon: '👥', color: 'cyan', sub: 'Primer año' },
+        { label: 'Canceladas', value: k.polizas_canceladas || 0, meta: null, icon: '⚠️', color: 'rose', sub: `Total: ${k.total_polizas || 0}` },
     ];
 
     return (
@@ -129,6 +130,7 @@ export default function Dashboard() {
                                                 <Legend wrapperStyle={{ fontSize: 12 }} />
                                                 <Bar dataKey="polizas_vida" name="Vida" fill="#6366f1" radius={[4, 4, 0, 0]} />
                                                 <Bar dataKey="polizas_gmm" name="GMM" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                                <Bar dataKey="polizas_autos" name="Autos" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                                             </BarChart>
                                         </ResponsiveContainer>
                                     </div>
@@ -168,7 +170,7 @@ export default function Dashboard() {
                             <div className="card" style={{ marginBottom: 28 }}>
                                 <div style={{ marginBottom: 20 }}>
                                     <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>Prima Nueva por Mes — {anio}</div>
-                                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Comparativo Vida vs GMM en MXN</div>
+                                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Comparativo Vida vs GMM vs Autos en MXN</div>
                                 </div>
                                 <div className="chart-container">
                                     <ResponsiveContainer width="100%" height="100%">
@@ -180,6 +182,7 @@ export default function Dashboard() {
                                             <Legend wrapperStyle={{ fontSize: 12 }} />
                                             <Line type="monotone" dataKey="prima_vida" name="Prima Vida" stroke="#6366f1" strokeWidth={2.5} dot={{ fill: '#6366f1', r: 4 }} activeDot={{ r: 6 }} />
                                             <Line type="monotone" dataKey="prima_gmm" name="Prima GMM" stroke="#10b981" strokeWidth={2.5} dot={{ fill: '#10b981', r: 4 }} activeDot={{ r: 6 }} />
+                                            <Line type="monotone" dataKey="prima_autos" name="Prima Autos" stroke="#3b82f6" strokeWidth={2.5} dot={{ fill: '#3b82f6', r: 4 }} activeDot={{ r: 6 }} />
                                         </LineChart>
                                     </ResponsiveContainer>
                                 </div>

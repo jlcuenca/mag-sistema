@@ -65,8 +65,10 @@ def get_dashboard(
     # ── KPIs ──
     nuevas_vida  = [p for p in polizas if p["ramo_codigo"]==11 and p["tipo_poliza"]=="NUEVA" and p["tipo_prima"]=="BASICA"]
     nuevas_gmm   = [p for p in polizas if p["ramo_codigo"]==34 and p["tipo_poliza"]=="NUEVA"]
+    nuevas_autos = [p for p in polizas if p["ramo_codigo"]==90 and p["tipo_poliza"]=="NUEVA"]
     subs_vida    = [p for p in polizas if p["ramo_codigo"]==11 and p["tipo_poliza"]=="SUBSECUENTE"]
     subs_gmm     = [p for p in polizas if p["ramo_codigo"]==34 and p["tipo_poliza"]=="SUBSECUENTE"]
+    subs_autos   = [p for p in polizas if p["ramo_codigo"]==90 and p["tipo_poliza"]=="SUBSECUENTE"]
     canceladas   = [p for p in polizas if p["status_recibo"] not in ("PAGADA", "AL CORRIENTE", None)]
 
     meta = db.execute(text("SELECT * FROM metas WHERE anio=:a AND periodo IS NULL"), {"a": anio}).mappings().first()
@@ -77,8 +79,11 @@ def get_dashboard(
         polizas_nuevas_gmm    = len(nuevas_gmm),
         asegurados_nuevos_gmm = sum(p["num_asegurados"] or 1 for p in nuevas_gmm),
         prima_nueva_gmm       = sum(p["prima_neta"] or 0 for p in nuevas_gmm),
+        polizas_nuevas_autos  = len(nuevas_autos),
+        prima_nueva_autos     = sum(p["prima_neta"] or 0 for p in nuevas_autos),
         prima_subsecuente_vida= sum(p["prima_neta"] or 0 for p in subs_vida),
         prima_subsecuente_gmm = sum(p["prima_neta"] or 0 for p in subs_gmm),
+        prima_subsecuente_autos= sum(p["prima_neta"] or 0 for p in subs_autos),
         polizas_canceladas    = len(canceladas),
         total_polizas         = len(polizas),
         meta_vida             = meta["meta_polizas_vida"] if meta else 0,
@@ -92,8 +97,10 @@ def get_dashboard(
         SELECT p.periodo_aplicacion as periodo,
                SUM(CASE WHEN pr.ramo_codigo=11 AND p.tipo_poliza='NUEVA' THEN 1 ELSE 0 END) as polizas_vida,
                SUM(CASE WHEN pr.ramo_codigo=34 AND p.tipo_poliza='NUEVA' THEN 1 ELSE 0 END) as polizas_gmm,
+               SUM(CASE WHEN pr.ramo_codigo=90 AND p.tipo_poliza='NUEVA' THEN 1 ELSE 0 END) as polizas_autos,
                SUM(CASE WHEN pr.ramo_codigo=11 AND p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_vida,
-               SUM(CASE WHEN pr.ramo_codigo=34 AND p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_gmm
+               SUM(CASE WHEN pr.ramo_codigo=34 AND p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_gmm,
+               SUM(CASE WHEN pr.ramo_codigo=90 AND p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_autos
         FROM polizas p
         LEFT JOIN productos pr ON p.producto_id = pr.id
         WHERE p.anio_aplicacion = :anio
@@ -106,8 +113,10 @@ def get_dashboard(
             periodo=r["periodo"] or "",
             polizas_vida=r["polizas_vida"] or 0,
             polizas_gmm=r["polizas_gmm"] or 0,
+            polizas_autos=r["polizas_autos"] or 0,
             prima_vida=round(r["prima_vida"] or 0, 2),
             prima_gmm=round(r["prima_gmm"] or 0, 2),
+            prima_autos=round(r["prima_autos"] or 0, 2),
         ) for r in mensual_raw
     ]
 
