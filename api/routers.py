@@ -1512,6 +1512,8 @@ async def importar_indicadores_axa(
 @router_importacion.post("/pagtotal", response_model=ImportacionResult)
 async def importar_pagtotal(
     archivo: UploadFile = File(...),
+    limpiar: bool = Query(True, description="Limpiar tabla pagos antes de importar (false para chunks)"),
+    actualizar_polizas: bool = Query(True, description="Actualizar prima_acumulada en pólizas después de importar"),
     db: Session = Depends(get_db)
 ):
     """
@@ -1528,11 +1530,14 @@ async def importar_pagtotal(
     nuevos = 0
 
     try:
-        # ── Paso 0: Limpiar tabla pagos ──
-        count_antes = db.execute(text("SELECT COUNT(*) FROM pagos")).scalar() or 0
-        db.execute(text("DELETE FROM pagos"))
-        db.commit()
-        errores.append(f"INFO: Tabla pagos limpiada ({count_antes} registros anteriores)")
+        # ── Paso 0: Limpiar tabla pagos (opcional para chunks) ──
+        if limpiar:
+            count_antes = db.execute(text("SELECT COUNT(*) FROM pagos")).scalar() or 0
+            db.execute(text("DELETE FROM pagos"))
+            db.commit()
+            errores.append(f"INFO: Tabla pagos limpiada ({count_antes} registros anteriores)")
+        else:
+            errores.append("INFO: Modo append (sin limpiar tabla)")
 
         # ── Paso 1: Leer archivo ──
         if archivo.filename.endswith(".csv"):
@@ -1653,17 +1658,21 @@ async def importar_pagtotal(
         db.commit()
 
         # ── Paso 3: Actualizar prima_acumulada_basica en pólizas ──
-        updated = db.execute(text("""
-            UPDATE polizas SET prima_acumulada_basica = sub.total_pagado
-            FROM (
-                SELECT poliza_match, SUM(prima_neta) as total_pagado
-                FROM pagos
-                GROUP BY poliza_match
-            ) sub
-            WHERE polizas.poliza_original = sub.poliza_match
-        """)).rowcount
-        db.commit()
-        errores.append(f"INFO: prima_acumulada_basica actualizada en {updated} pólizas")
+        updated = 0
+        if actualizar_polizas:
+            updated = db.execute(text("""
+                UPDATE polizas SET prima_acumulada_basica = sub.total_pagado
+                FROM (
+                    SELECT poliza_match, SUM(prima_neta) as total_pagado
+                    FROM pagos
+                    GROUP BY poliza_match
+                ) sub
+                WHERE polizas.poliza_original = sub.poliza_match
+            """)).rowcount
+            db.commit()
+            errores.append(f"INFO: prima_acumulada_basica actualizada en {updated} pólizas")
+        else:
+            errores.append("INFO: Actualización de pólizas omitida (modo chunk)")
 
         # Log
         log = Importacion(
