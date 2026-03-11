@@ -1,368 +1,349 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
-import { apiFetch, getSolicitudDocUrl } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 
-const ESTADOS = ['TRAMITE', 'EMITIDA', 'PAGADA', 'RECHAZADA', 'CANCELADA'];
-const ESTADO_CONFIG = {
-    TRAMITE: { color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: '📝', label: 'En Trámite' },
-    EMITIDA: { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', icon: '📄', label: 'Emitida' },
-    PAGADA: { color: '#10b981', bg: 'rgba(16,185,129,0.12)', icon: '✅', label: 'Pagada' },
-    RECHAZADA: { color: '#ef4444', bg: 'rgba(239,68,68,0.12)', icon: '❌', label: 'Rechazada' },
-    CANCELADA: { color: '#6b7280', bg: 'rgba(107,114,128,0.12)', icon: '🚫', label: 'Cancelada' },
+const MESES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+const ETAPA_CONFIG = {
+    POLIZA_ENVIADA: { color: '#10b981', bg: 'rgba(16,185,129,0.12)', icon: '✅', label: 'Emitida' },
+    RECHAZO_EMISION: { color: '#ef4444', bg: 'rgba(239,68,68,0.12)', icon: '❌', label: 'Rechazo Emisión' },
+    RECHAZO_EXPIRACION: { color: '#f97316', bg: 'rgba(249,115,22,0.12)', icon: '⏰', label: 'Expirada' },
+    RECHAZO_SELECCION: { color: '#a855f7', bg: 'rgba(168,85,247,0.12)', icon: '🚫', label: 'Selección' },
+    RECHAZO_AUT_INFO_AD: { color: '#ec4899', bg: 'rgba(236,72,153,0.12)', icon: '📋', label: 'Aut/Info' },
+    CANCELADO: { color: '#6b7280', bg: 'rgba(107,114,128,0.12)', icon: '🚫', label: 'Cancelada' },
 };
 
-function fmt(n) {
-    if (n == null) return '$0';
-    if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-    if (Math.abs(n) >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-    return `$${n.toFixed(0)}`;
-}
+const fmt = (n) => {
+    if (n == null) return '0';
+    return new Intl.NumberFormat('es-MX').format(n);
+};
 
-const EMPTY_FORM = { agente_id: '', contratante_id: '', ramo: 'VIDA', plan: '', prima_estimada: '', notas: '' };
-
-export default function Solicitudes() {
-    const [data, setData] = useState({ solicitudes: [], pipeline: {} });
+export default function IndicadoresSolicitudes() {
+    const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [filtroEstado, setFiltroEstado] = useState('');
-    const [showModal, setShowModal] = useState(false);
-    const [form, setForm] = useState({ ...EMPTY_FORM });
-    const [saving, setSaving] = useState(false);
-    const [viewMode, setViewMode] = useState('kanban'); // kanban | tabla
-    const [docViewer, setDocViewer] = useState(null); // { folio, url }
+    const [anio, setAnio] = useState(2025);
+    const [ramo, setRamo] = useState('');
+    const [tab, setTab] = useState('pipeline'); // pipeline, agentes, rechazos
 
-    const fetchData = () => {
+    useEffect(() => {
         setLoading(true);
-        const p = filtroEstado ? `?estado=${filtroEstado}` : '';
-        apiFetch(`/solicitudes${p}`)
-            .then(d => { setData(d || { solicitudes: [], pipeline: {} }); setLoading(false); })
+        const params = new URLSearchParams({ anio });
+        if (ramo) params.set('ramo', ramo);
+        apiFetch(`/indicadores-solicitudes?${params}`)
+            .then(d => { setData(d); setLoading(false); })
             .catch(() => setLoading(false));
-    };
+    }, [anio, ramo]);
 
-    useEffect(() => { fetchData(); }, [filtroEstado]);
+    if (loading) return (
+        <div style={{ display: 'flex', minHeight: '100vh', background: '#0a0e1a' }}>
+            <Sidebar />
+            <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ color: '#94a3b8', fontSize: 18 }}>⏳ Cargando indicadores...</div>
+            </main>
+        </div>
+    );
 
-    const handleCreate = async () => {
-        setSaving(true);
-        const body = { ...form, prima_estimada: parseFloat(form.prima_estimada) || 0 };
-        if (!body.agente_id) delete body.agente_id;
-        if (!body.contratante_id) delete body.contratante_id;
-        try {
-            await apiFetch('/solicitudes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-            setShowModal(false);
-            setForm({ ...EMPTY_FORM });
-            fetchData();
-        } catch (e) { alert('Error al crear'); }
-        setSaving(false);
-    };
+    if (!data) return (
+        <div style={{ display: 'flex', minHeight: '100vh', background: '#0a0e1a' }}>
+            <Sidebar />
+            <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ color: '#ef4444', fontSize: 18 }}>❌ Error al cargar datos. Importa el archivo VW_CONCENTRADO_ETAPAS primero.</div>
+            </main>
+        </div>
+    );
 
-    const updateEstado = async (id, nuevoEstado) => {
-        const body = { estado: nuevoEstado };
-        if (nuevoEstado === 'PAGADA') body.fecha_pago = new Date().toISOString().split('T')[0];
-        if (nuevoEstado === 'EMITIDA') body.fecha_emision = new Date().toISOString().split('T')[0];
-        await apiFetch(`/solicitudes/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        fetchData();
-    };
-
-    const pipe = data.pipeline || {};
-    const sols = data.solicitudes || [];
+    const k = data.kpis;
+    const maxBarMes = Math.max(...(data.por_mes || []).map(m => m.total), 1);
 
     return (
-        <div className="layout">
+        <div style={{ display: 'flex', minHeight: '100vh', background: '#0a0e1a' }}>
             <Sidebar />
-            <main className="main">
-                <header className="header">
+            <main style={{ flex: 1, padding: '24px 32px', overflowY: 'auto' }}>
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
                     <div>
-                        <div className="header-title">Pipeline de Solicitudes</div>
-                        <div className="header-subtitle">Tracking: Trámite → Emitida → Pagada</div>
+                        <h1 style={{ color: '#f1f5f9', fontSize: 24, fontWeight: 700, margin: 0 }}>
+                            Indicadores de Solicitudes
+                        </h1>
+                        <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0' }}>
+                            Pipeline de trámites · Emisiones · Rechazos · Tiempos
+                        </p>
                     </div>
-                    <div className="header-right">
-                        <div style={{ display: 'flex', gap: 4, background: 'var(--bg-card)', padding: 3, borderRadius: 10, border: '1px solid var(--border)' }}>
-                            <button className={`btn ${viewMode === 'kanban' ? 'btn-primary' : 'btn-ghost'}`} style={{ padding: '6px 14px', fontSize: 12 }} onClick={() => setViewMode('kanban')}>🗂️ Kanban</button>
-                            <button className={`btn ${viewMode === 'tabla' ? 'btn-primary' : 'btn-ghost'}`} style={{ padding: '6px 14px', fontSize: 12 }} onClick={() => setViewMode('tabla')}>📋 Tabla</button>
-                        </div>
-                        <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ Nueva Solicitud</button>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                        <select value={anio} onChange={e => setAnio(Number(e.target.value))}
+                            style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, padding: '8px 14px', fontSize: 14 }}>
+                            {(data.anios_disponibles || []).map(a => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                        <select value={ramo} onChange={e => setRamo(e.target.value)}
+                            style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, padding: '8px 14px', fontSize: 14 }}>
+                            <option value="">Todos los ramos</option>
+                            <option value="SALUD">Salud (GMM)</option>
+                            <option value="VIDA">Vida</option>
+                        </select>
                     </div>
-                </header>
-
-                <div className="page-content fade-in">
-                    {/* Pipeline KPIs */}
-                    <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
-                        <div className="kpi-card" style={{ borderTop: '3px solid var(--accent-blue)' }}>
-                            <div className="kpi-value" style={{ color: 'var(--accent-blue)', fontSize: 28 }}>{pipe.total || 0}</div>
-                            <div className="kpi-label">Total Solicitudes</div>
-                        </div>
-                        {ESTADOS.slice(0, 3).map(e => {
-                            const cfg = ESTADO_CONFIG[e];
-                            const count = pipe[e.toLowerCase()] || 0;
-                            return (
-                                <div key={e} className="kpi-card" style={{ borderTop: `3px solid ${cfg.color}`, cursor: 'pointer' }} onClick={() => setFiltroEstado(filtroEstado === e ? '' : e)}>
-                                    <div style={{ fontSize: 20, marginBottom: 4 }}>{cfg.icon}</div>
-                                    <div className="kpi-value" style={{ color: cfg.color, fontSize: 26 }}>{count}</div>
-                                    <div className="kpi-label">{cfg.label}</div>
-                                </div>
-                            );
-                        })}
-                        <div className="kpi-card" style={{ borderTop: '3px solid var(--accent-emerald)' }}>
-                            <div className="kpi-value" style={{ color: 'var(--accent-emerald)', fontSize: 18 }}>{fmt(pipe.prima_estimada_total)}</div>
-                            <div className="kpi-label">Prima Estimada</div>
-                        </div>
-                        <div className="kpi-card" style={{ borderTop: '3px solid var(--accent-cyan)' }}>
-                            <div className="kpi-value" style={{ color: 'var(--accent-cyan)', fontSize: 18 }}>{fmt(pipe.prima_pagada_total)}</div>
-                            <div className="kpi-label">Prima Pagada</div>
-                        </div>
-                    </div>
-
-                    {/* Kanban View */}
-                    {viewMode === 'kanban' && (
-                        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ESTADOS.length}, 1fr)`, gap: 14 }}>
-                            {ESTADOS.map(estado => {
-                                const cfg = ESTADO_CONFIG[estado];
-                                const cards = sols.filter(s => s.estado === estado);
-                                return (
-                                    <div key={estado} style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' }}>
-                                        <div style={{ padding: '12px 16px', background: cfg.bg, borderBottom: `2px solid ${cfg.color}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ fontWeight: 700, fontSize: 13, color: cfg.color }}>{cfg.icon} {cfg.label}</span>
-                                            <span className="badge" style={{ background: cfg.color, color: '#fff', fontSize: 11 }}>{cards.length}</span>
-                                        </div>
-                                        <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 120 }}>
-                                            {cards.length === 0 ? (
-                                                <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 12 }}>Sin solicitudes</div>
-                                            ) : cards.map(s => (
-                                                <div key={s.id} style={{ background: 'var(--bg-main)', borderRadius: 10, padding: 12, border: '1px solid var(--border)', transition: 'transform 0.15s', cursor: 'default' }}
-                                                    onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
-                                                    onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                                        <code style={{ fontSize: 10, color: cfg.color, background: cfg.bg, padding: '2px 6px', borderRadius: 4 }}>{s.folio}</code>
-                                                        <span className="badge" style={{ fontSize: 9 }}>{s.ramo}</span>
-                                                    </div>
-                                                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: 'var(--text-primary)' }}>
-                                                        {s.contratante_nombre || s.plan || '—'}
-                                                    </div>
-                                                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
-                                                        {s.agente_nombre || 'Sin agente'} · {fmt(s.prima_estimada)}
-                                                    </div>
-                                                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8 }}>
-                                                        📅 {s.fecha_solicitud || '—'}
-                                                    </div>
-                                                    {/* Quick actions */}
-                                                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-                                                        <button
-                                                            className="btn btn-ghost"
-                                                            title={`Ver PDF solicitud ${s.folio}`}
-                                                            onClick={() => setDocViewer({ folio: s.folio, url: getSolicitudDocUrl(s.folio), contratante: s.contratante_nombre })}
-                                                            style={{ padding: '3px 8px', fontSize: 10, color: '#60a5fa' }}
-                                                        >
-                                                            📄 Ver Doc
-                                                        </button>
-                                                        {estado === 'TRAMITE' && (
-                                                            <>
-                                                                <button className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 10, color: '#3b82f6' }} onClick={() => updateEstado(s.id, 'EMITIDA')}>📄 Emitir</button>
-                                                                <button className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 10, color: '#ef4444' }} onClick={() => updateEstado(s.id, 'RECHAZADA')}>❌ Rechazar</button>
-                                                            </>
-                                                        )}
-                                                        {estado === 'EMITIDA' && (
-                                                            <>
-                                                                <button className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 10, color: '#10b981' }} onClick={() => updateEstado(s.id, 'PAGADA')}>✅ Pagada</button>
-                                                                <button className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 10, color: '#6b7280' }} onClick={() => updateEstado(s.id, 'CANCELADA')}>🚫 Cancelar</button>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {/* Table View */}
-                    {viewMode === 'tabla' && (
-                        <div className="card">
-                            <div className="table-container">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Folio</th>
-                                            <th style={{ textAlign: 'center', width: 50 }}>Doc</th>
-                                            <th>Estado</th>
-                                            <th>Ramo</th>
-                                            <th>Plan</th>
-                                            <th>Contratante</th>
-                                            <th>Agente</th>
-                                            <th style={{ textAlign: 'right' }}>Prima Est.</th>
-                                            <th>Fecha Sol.</th>
-                                            <th>Fecha Emisión</th>
-                                            <th>Fecha Pago</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {loading ? Array(5).fill(0).map((_, i) => (
-                                            <tr key={i}>{Array(10).fill(0).map((_, j) => <td key={j}><div className="loading-skeleton" style={{ height: 14, width: '70%' }} /></td>)}</tr>
-                                        )) : sols.length === 0 ? (
-                                            <tr><td colSpan={10} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-                                                <div style={{ fontSize: 40, marginBottom: 10 }}>📝</div>
-                                                Sin solicitudes. Crea una nueva para comenzar.
-                                            </td></tr>
-                                        ) : sols.map(s => {
-                                            const cfg = ESTADO_CONFIG[s.estado] || ESTADO_CONFIG.TRAMITE;
-                                            return (
-                                                <tr key={s.id}>
-                                                    <td><code style={{ fontSize: 11 }}>{s.folio}</code></td>
-                                                    <td style={{ textAlign: 'center' }}>
-                                                        <button
-                                                            className="btn btn-ghost"
-                                                            title={`Ver PDF solicitud ${s.folio}`}
-                                                            onClick={() => setDocViewer({ folio: s.folio, url: getSolicitudDocUrl(s.folio), contratante: s.contratante_nombre })}
-                                                            style={{ padding: '3px 6px', fontSize: 14, lineHeight: 1, borderRadius: 6, minWidth: 30 }}
-                                                        >
-                                                            📄
-                                                        </button>
-                                                    </td>
-                                                    <td><span className="badge" style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}30` }}>{cfg.icon} {cfg.label}</span></td>
-                                                    <td><span className="badge badge-info">{s.ramo}</span></td>
-                                                    <td>{s.plan || '—'}</td>
-                                                    <td>{s.contratante_nombre || '—'}</td>
-                                                    <td style={{ fontSize: 12 }}>{s.agente_nombre || '—'}</td>
-                                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(s.prima_estimada)}</td>
-                                                    <td style={{ fontSize: 12 }}>{s.fecha_solicitud || '—'}</td>
-                                                    <td style={{ fontSize: 12 }}>{s.fecha_emision || '—'}</td>
-                                                    <td style={{ fontSize: 12 }}>{s.fecha_pago || '—'}</td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
                 </div>
 
-                {/* Create Modal */}
-                {showModal && (
-                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
-                        onClick={() => setShowModal(false)}>
-                        <div className="card" style={{ width: 480 }} onClick={e => e.stopPropagation()}>
-                            <h3 style={{ marginBottom: 20 }}>📝 Nueva Solicitud</h3>
-                            <div style={{ display: 'grid', gap: 14 }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                                    <div>
-                                        <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Ramo</label>
-                                        <select value={form.ramo} onChange={e => setForm({ ...form, ramo: e.target.value })}
-                                            style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-main)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }}>
-                                            <option>VIDA</option>
-                                            <option>GMM</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Prima Estimada</label>
-                                        <input type="number" value={form.prima_estimada} onChange={e => setForm({ ...form, prima_estimada: e.target.value })} placeholder="25000"
-                                            style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-main)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }} />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Plan / Producto</label>
-                                    <input value={form.plan} onChange={e => setForm({ ...form, plan: e.target.value })} placeholder="VIDA Y AHORRO, FLEX PLUS..."
-                                        style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-main)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }} />
-                                </div>
-                                <div>
-                                    <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Notas</label>
-                                    <textarea value={form.notas} onChange={e => setForm({ ...form, notas: e.target.value })} placeholder="Observaciones adicionales..." rows={3}
-                                        style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-main)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', resize: 'vertical' }} />
-                                </div>
-                            </div>
-                            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
-                                <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancelar</button>
-                                <button className="btn btn-primary" disabled={saving} onClick={handleCreate}>
-                                    {saving ? 'Creando...' : 'Crear Solicitud'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                {/* KPIS principales */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 16, marginBottom: 24 }}>
+                    <KpiCard icon="📋" value={fmt(k.total_solicitudes)} label="Total Solicitudes" color="#3b82f6" />
+                    <KpiCard icon="✅" value={fmt(k.emitidas)} label="Pólizas Emitidas" color="#10b981" sub={`${k.tasa_emision}%`} />
+                    <KpiCard icon="❌" value={fmt(k.total_rechazos)} label="Total Rechazos" color="#ef4444" sub={`${k.tasa_rechazo}%`} />
+                    <KpiCard icon="⏱️" value={`${k.promedio_dias_emision}d`} label="Prom. Días Emisión" color="#f59e0b" />
+                    <KpiCard icon="🆕" value={fmt(k.nuevos)} label="Negocio Nuevo" color="#8b5cf6" />
+                    <KpiCard icon="👥" value={fmt(k.total_solicitantes)} label="Solicitantes" color="#06b6d4" />
+                </div>
 
-                {/* ═══ PDF Viewer Modal ═══ */}
-                {docViewer && (
-                    <div
-                        style={{
-                            position: 'fixed', inset: 0, zIndex: 1000,
-                            background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            animation: 'fadeIn 0.2s ease',
-                        }}
-                        onClick={() => setDocViewer(null)}
-                    >
-                        <div
+                {/* Semáforo de etapas */}
+                <div style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', borderRadius: 16, padding: '20px 24px', marginBottom: 24, border: '1px solid #334155' }}>
+                    <h3 style={{ color: '#94a3b8', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.2, margin: '0 0 16px' }}>
+                        Distribución del Pipeline
+                    </h3>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        <EtapaChip etapa="POLIZA_ENVIADA" count={k.emitidas} total={k.total_solicitudes} />
+                        <EtapaChip etapa="RECHAZO_EMISION" count={k.rechazos_emision} total={k.total_solicitudes} />
+                        <EtapaChip etapa="RECHAZO_EXPIRACION" count={k.rechazos_expiracion} total={k.total_solicitudes} />
+                        <EtapaChip etapa="RECHAZO_SELECCION" count={k.rechazos_seleccion} total={k.total_solicitudes} />
+                        <EtapaChip etapa="CANCELADO" count={k.canceladas} total={k.total_solicitudes} />
+                    </div>
+                    {/* Progress bar */}
+                    <div style={{ display: 'flex', height: 10, borderRadius: 5, overflow: 'hidden', marginTop: 16 }}>
+                        <div style={{ width: `${k.tasa_emision}%`, background: 'linear-gradient(90deg, #10b981, #34d399)', transition: 'width 0.5s' }} />
+                        <div style={{ width: `${k.total_solicitudes > 0 ? k.rechazos_emision / k.total_solicitudes * 100 : 0}%`, background: '#ef4444', transition: 'width 0.5s' }} />
+                        <div style={{ width: `${k.total_solicitudes > 0 ? k.rechazos_expiracion / k.total_solicitudes * 100 : 0}%`, background: '#f97316', transition: 'width 0.5s' }} />
+                        <div style={{ width: `${k.total_solicitudes > 0 ? k.rechazos_seleccion / k.total_solicitudes * 100 : 0}%`, background: '#a855f7', transition: 'width 0.5s' }} />
+                        <div style={{ flex: 1, background: '#334155' }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 20, marginTop: 8, fontSize: 11, color: '#94a3b8' }}>
+                        <span><span style={{ color: '#10b981' }}>●</span> Emitidas {k.tasa_emision}%</span>
+                        <span><span style={{ color: '#ef4444' }}>●</span> Rech. Emisión</span>
+                        <span><span style={{ color: '#f97316' }}>●</span> Expiradas</span>
+                        <span><span style={{ color: '#a855f7' }}>●</span> Selección</span>
+                        <span><span style={{ color: '#334155' }}>●</span> Otros</span>
+                    </div>
+                </div>
+
+                {/* Tabs */}
+                <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
+                    {[
+                        { id: 'pipeline', icon: '📊', label: 'Pipeline Mensual' },
+                        { id: 'agentes', icon: '👤', label: 'Top Agentes' },
+                        { id: 'rechazos', icon: '📋', label: 'Rechazos Recientes' },
+                    ].map(t => (
+                        <button key={t.id} onClick={() => setTab(t.id)}
                             style={{
-                                width: '85vw', maxWidth: 1000, height: '90vh',
-                                background: 'var(--bg-card)', borderRadius: 16,
-                                border: '1px solid var(--border)',
-                                boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
-                                display: 'flex', flexDirection: 'column',
-                                overflow: 'hidden',
-                                animation: 'slideUp 0.25s ease',
-                            }}
-                            onClick={e => e.stopPropagation()}
-                        >
-                            {/* Header */}
-                            <div style={{
-                                padding: '16px 24px', display: 'flex', justifyContent: 'space-between',
-                                alignItems: 'center', borderBottom: '1px solid var(--border)',
-                                background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(59,130,246,0.05))',
+                                background: tab === t.id ? 'linear-gradient(135deg, #3b82f6, #6366f1)' : '#1e293b',
+                                color: tab === t.id ? '#fff' : '#94a3b8',
+                                border: tab === t.id ? 'none' : '1px solid #334155',
+                                borderRadius: 10, padding: '10px 20px', fontSize: 13, fontWeight: 600,
+                                cursor: 'pointer', transition: 'all 0.2s',
                             }}>
-                                <div>
-                                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        📝 Documento de Solicitud
-                                        <code style={{ fontSize: 12, background: 'rgba(245,158,11,0.15)', color: '#fbbf24', padding: '2px 8px', borderRadius: 4 }}>
-                                            {docViewer.folio}
-                                        </code>
-                                    </div>
-                                    {docViewer.contratante && (
-                                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                                            Contratante: {docViewer.contratante}
+                            {t.icon} {t.label}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Tab Content */}
+                <div style={{ display: 'grid', gridTemplateColumns: tab === 'agentes' ? '1fr' : '2fr 1fr', gap: 20 }}>
+
+                    {/* Pipeline Mensual */}
+                    {tab === 'pipeline' && (
+                        <>
+                            <div style={{ background: '#1e293b', borderRadius: 16, padding: 24, border: '1px solid #334155' }}>
+                                <h3 style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 700, margin: '0 0 20px' }}>
+                                    Solicitudes por Mes — {anio}
+                                </h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {(data.por_mes || []).map(m => (
+                                        <div key={m.mes} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                            <span style={{ color: '#94a3b8', fontSize: 13, width: 36, textAlign: 'right' }}>{MESES[m.mes]}</span>
+                                            <div style={{ flex: 1, display: 'flex', height: 28, borderRadius: 6, overflow: 'hidden', background: '#0f172a' }}>
+                                                <div style={{ width: `${m.emitidas / maxBarMes * 100}%`, background: 'linear-gradient(90deg, #10b981, #34d399)', transition: 'width 0.4s' }}
+                                                    title={`Emitidas: ${m.emitidas}`} />
+                                                <div style={{ width: `${m.rechazadas / maxBarMes * 100}%`, background: 'linear-gradient(90deg, #ef4444, #f87171)', transition: 'width 0.4s' }}
+                                                    title={`Rechazadas: ${m.rechazadas}`} />
+                                                <div style={{ width: `${m.tramite / maxBarMes * 100}%`, background: 'linear-gradient(90deg, #f59e0b, #fbbf24)', transition: 'width 0.4s' }}
+                                                    title={`Trámite: ${m.tramite}`} />
+                                            </div>
+                                            <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, width: 40, textAlign: 'right' }}>{m.total}</span>
                                         </div>
-                                    )}
+                                    ))}
                                 </div>
-                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                    <a
-                                        href={docViewer.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="btn btn-ghost"
-                                        style={{ padding: '6px 14px', fontSize: 12, textDecoration: 'none', color: '#60a5fa' }}
-                                    >
-                                        🔗 Abrir en nueva pestaña
-                                    </a>
-                                    <a
-                                        href={docViewer.url}
-                                        download
-                                        className="btn btn-ghost"
-                                        style={{ padding: '6px 14px', fontSize: 12, textDecoration: 'none', color: '#34d399' }}
-                                    >
-                                        ⬇ Descargar
-                                    </a>
-                                    <button
-                                        className="btn btn-ghost"
-                                        onClick={() => setDocViewer(null)}
-                                        style={{ padding: '6px 10px', fontSize: 16, lineHeight: 1 }}
-                                    >
-                                        ✕
-                                    </button>
+                                <div style={{ display: 'flex', gap: 20, marginTop: 16, fontSize: 11, color: '#94a3b8' }}>
+                                    <span>🟢 Emitidas</span>
+                                    <span>🔴 Rechazadas</span>
+                                    <span>🟡 Trámite</span>
                                 </div>
                             </div>
 
-                            {/* PDF Embed */}
-                            <div style={{ flex: 1, background: '#1a1a2e' }}>
-                                <iframe
-                                    src={docViewer.url}
-                                    style={{ width: '100%', height: '100%', border: 'none' }}
-                                    title={`Solicitud ${docViewer.folio}`}
-                                />
+                            {/* Sidebar: Por Ramo */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                <div style={{ background: '#1e293b', borderRadius: 16, padding: 24, border: '1px solid #334155' }}>
+                                    <h3 style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 700, margin: '0 0 16px' }}>
+                                        Por Ramo
+                                    </h3>
+                                    {(data.por_ramo || []).map(r => (
+                                        <div key={r.ramo} style={{ marginBottom: 16 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                                <span style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600 }}>
+                                                    {r.ramo === 'SALUD' ? '🏥' : '💎'} {r.ramo}
+                                                </span>
+                                                <span style={{ color: '#10b981', fontSize: 13, fontWeight: 700 }}>{r.tasa_emision}%</span>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 12, fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
+                                                <span>Total: {fmt(r.total)}</span>
+                                                <span style={{ color: '#10b981' }}>✅ {fmt(r.emitidas)}</span>
+                                                <span style={{ color: '#ef4444' }}>❌ {fmt(r.rechazadas)}</span>
+                                            </div>
+                                            <div style={{ height: 6, borderRadius: 3, background: '#0f172a', overflow: 'hidden' }}>
+                                                <div style={{ height: '100%', width: `${r.tasa_emision}%`, background: r.ramo === 'SALUD' ? 'linear-gradient(90deg, #06b6d4, #22d3ee)' : 'linear-gradient(90deg, #8b5cf6, #a78bfa)', borderRadius: 3 }} />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                {/* Métricas extra */}
+                                <div style={{ background: '#1e293b', borderRadius: 16, padding: 24, border: '1px solid #334155' }}>
+                                    <h3 style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 700, margin: '0 0 16px' }}>
+                                        Métricas de Tiempo
+                                    </h3>
+                                    <Metric icon="⏱️" label="Promedio general" value={`${k.promedio_dias_tramite} días`} />
+                                    <Metric icon="✅" label="Emisión promedio" value={`${k.promedio_dias_emision} días`} color="#10b981" />
+                                    <Metric icon="🔄" label="Reingresos" value={fmt(k.reingresos)} color="#f97316" />
+                                    <Metric icon="🆕" label="Negocio nuevo" value={`${k.total_solicitudes > 0 ? ((k.nuevos / k.total_solicitudes) * 100).toFixed(1) : 0}%`} color="#8b5cf6" />
+                                </div>
                             </div>
+                        </>
+                    )}
+
+                    {/* Top Agentes */}
+                    {tab === 'agentes' && (
+                        <div style={{ background: '#1e293b', borderRadius: 16, padding: 24, border: '1px solid #334155' }}>
+                            <h3 style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 700, margin: '0 0 16px' }}>
+                                Top 15 Agentes por Solicitudes — {anio}
+                            </h3>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '1px solid #334155' }}>
+                                        {['#', 'Agente', 'Total', 'Emitidas', 'Rechazadas', 'Tasa Emisión'].map(h => (
+                                            <th key={h} style={{ color: '#64748b', fontSize: 11, textTransform: 'uppercase', padding: '10px 12px', textAlign: h === 'Agente' ? 'left' : 'right', letterSpacing: 0.5 }}>{h}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(data.top_agentes || []).map((a, i) => (
+                                        <tr key={a.agente_id} style={{ borderBottom: '1px solid rgba(51,65,85,0.5)', transition: 'background 0.2s' }}
+                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.05)'}
+                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                            <td style={{ color: '#64748b', fontSize: 13, padding: '12px', textAlign: 'right' }}>{i + 1}</td>
+                                            <td style={{ color: '#e2e8f0', fontSize: 13, padding: '12px', fontWeight: 600 }}>
+                                                {a.nombre}
+                                                <span style={{ color: '#64748b', fontSize: 11, marginLeft: 8 }}>ID: {a.agente_id}</span>
+                                            </td>
+                                            <td style={{ color: '#e2e8f0', fontSize: 14, padding: '12px', textAlign: 'right', fontWeight: 700 }}>{a.total}</td>
+                                            <td style={{ color: '#10b981', fontSize: 14, padding: '12px', textAlign: 'right', fontWeight: 600 }}>{a.emitidas}</td>
+                                            <td style={{ color: '#ef4444', fontSize: 14, padding: '12px', textAlign: 'right', fontWeight: 600 }}>{a.rechazadas}</td>
+                                            <td style={{ padding: '12px', textAlign: 'right' }}>
+                                                <span style={{
+                                                    background: a.tasa_emision >= 80 ? 'rgba(16,185,129,0.15)' : a.tasa_emision >= 50 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+                                                    color: a.tasa_emision >= 80 ? '#10b981' : a.tasa_emision >= 50 ? '#f59e0b' : '#ef4444',
+                                                    padding: '4px 10px', borderRadius: 6, fontSize: 13, fontWeight: 700,
+                                                }}>{a.tasa_emision}%</span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
-                    </div>
-                )}
+                    )}
+
+                    {/* Rechazos Recientes */}
+                    {tab === 'rechazos' && (
+                        <>
+                            <div style={{ background: '#1e293b', borderRadius: 16, padding: 24, border: '1px solid #334155', gridColumn: 'span 2' }}>
+                                <h3 style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 700, margin: '0 0 16px' }}>
+                                    Últimos Rechazos — Detalle
+                                </h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {(data.rechazos_recientes || []).map((r, i) => {
+                                        const cfg = ETAPA_CONFIG[r.etapa] || { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', icon: '❓', label: r.etapa };
+                                        return (
+                                            <div key={i} style={{ background: '#0f172a', borderRadius: 12, padding: '14px 18px', border: `1px solid ${cfg.color}22` }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                        <span style={{ background: cfg.bg, color: cfg.color, padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+                                                            {cfg.icon} {cfg.label}
+                                                        </span>
+                                                        <span style={{ color: '#e2e8f0', fontWeight: 700, fontSize: 14 }}>#{r.nosol}</span>
+                                                        <span style={{ color: '#64748b', fontSize: 12 }}>{r.ramo}</span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: 10, fontSize: 12, color: '#64748b' }}>
+                                                        <span>📅 {r.fecha_recepcion}</span>
+                                                        {r.dias != null && <span>⏱️ {r.dias}d</span>}
+                                                        <span>👤 {r.agente}</span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ color: '#94a3b8', fontSize: 12 }}>
+                                                    <span style={{ fontWeight: 600, color: '#cbd5e1' }}>{r.contratante}</span>
+                                                    {r.observaciones && (
+                                                        <p style={{ margin: '6px 0 0', lineHeight: 1.5, color: '#78879b' }}>{r.observaciones}</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
             </main>
+        </div>
+    );
+}
+
+function KpiCard({ icon, value, label, color, sub }) {
+    return (
+        <div style={{
+            background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+            borderRadius: 14, padding: '18px 16px', border: '1px solid #334155',
+            display: 'flex', flexDirection: 'column', gap: 4,
+            transition: 'transform 0.2s, box-shadow 0.2s',
+        }}
+            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 30px ${color}15`; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+        >
+            <div style={{ fontSize: 20, marginBottom: 2 }}>{icon}</div>
+            <div style={{ color, fontSize: 26, fontWeight: 800, lineHeight: 1.1 }}>
+                {value}
+                {sub && <span style={{ fontSize: 13, fontWeight: 600, marginLeft: 6, opacity: 0.8 }}>{sub}</span>}
+            </div>
+            <div style={{ color: '#64748b', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+        </div>
+    );
+}
+
+function EtapaChip({ etapa, count, total }) {
+    const cfg = ETAPA_CONFIG[etapa] || { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', icon: '?', label: etapa };
+    const pct = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+    return (
+        <div style={{
+            background: cfg.bg, border: `1px solid ${cfg.color}33`, borderRadius: 10,
+            padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 150px',
+        }}>
+            <span style={{ fontSize: 22 }}>{cfg.icon}</span>
+            <div>
+                <div style={{ color: cfg.color, fontSize: 20, fontWeight: 800 }}>{fmt(count)}</div>
+                <div style={{ color: '#94a3b8', fontSize: 11 }}>{cfg.label} · {pct}%</div>
+            </div>
+        </div>
+    );
+}
+
+function Metric({ icon, label, value, color = '#e2e8f0' }) {
+    return (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #334155' }}>
+            <span style={{ color: '#94a3b8', fontSize: 13 }}>{icon} {label}</span>
+            <span style={{ color, fontSize: 15, fontWeight: 700 }}>{value}</span>
         </div>
     );
 }

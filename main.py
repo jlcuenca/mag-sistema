@@ -23,6 +23,7 @@ from api.routers import (
     router_comisiones,
     router_configuracion,
     router_documentos,
+    router_indicadores_sol,
 )
 
 IS_DEMO = os.getenv("DEMO_MODE", "true").lower() == "true"
@@ -81,6 +82,7 @@ app.include_router(router_configuracion)
 app.include_router(router_importacion)
 app.include_router(router_exportacion)
 app.include_router(router_documentos)
+app.include_router(router_indicadores_sol)
 
 
 @app.get("/", tags=["Sistema"])

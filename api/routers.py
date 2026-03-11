@@ -14,6 +14,7 @@ from .database import (
     get_db, Agente, Poliza, Producto, IndicadorAxa, Meta, Importacion,
     Segmento, Recibo, Conciliacion, Presupuesto, Pago,
     Contratante, Solicitud, DistribucionComision, Configuracion,
+    EtapaSolicitud,
 )
 from .schemas import (
     AgenteOut, AgenteCreate,
@@ -2413,3 +2414,168 @@ async def proxy_solicitud_pdf(num_solicitud: str, db: Session = Depends(get_db))
     except httpx.ConnectError:
         raise HTTPException(502, "No se pudo conectar con el servidor de documentos")
 
+
+# ═══════════════════════════════════════════════════════════════════
+# INDICADORES DE SOLICITUDES (VW_CONCENTRADO_ETAPAS)
+# ═══════════════════════════════════════════════════════════════════
+router_indicadores_sol = APIRouter(prefix="/indicadores-solicitudes", tags=["Indicadores Solicitudes"])
+
+
+@router_indicadores_sol.get("")
+def get_indicadores_solicitudes(
+    anio: int = Query(2025, description="Año de análisis"),
+    ramo: str = Query("", description="Filtro por ramo: SALUD, VIDA, o vacío=todos"),
+    etapa: str = Query("", description="Filtro por etapa"),
+    agente: str = Query("", description="Filtro por ID de agente"),
+    db: Session = Depends(get_db)
+):
+    """Dashboard de indicadores del pipeline de solicitudes."""
+    base = "FROM etapas_solicitudes WHERE ano_recepcion = :anio"
+    params = {"anio": anio}
+
+    if ramo:
+        base += " AND UPPER(nomramo) = :ramo"
+        params["ramo"] = ramo.upper()
+    if etapa:
+        base += " AND etapa = :etapa"
+        params["etapa"] = etapa
+    if agente:
+        base += " AND idagente = :agente"
+        params["agente"] = agente
+
+    # KPIs principales
+    total = db.execute(text(f"SELECT COUNT(*) {base}"), params).scalar() or 0
+    emitidas = db.execute(text(f"SELECT COUNT(*) {base} AND etapa = 'POLIZA_ENVIADA'"), params).scalar() or 0
+    rechazos_emision = db.execute(text(f"SELECT COUNT(*) {base} AND etapa = 'RECHAZO_EMISION'"), params).scalar() or 0
+    rechazos_exp = db.execute(text(f"SELECT COUNT(*) {base} AND etapa = 'RECHAZO_EXPIRACION'"), params).scalar() or 0
+    rechazos_sel = db.execute(text(f"SELECT COUNT(*) {base} AND etapa = 'RECHAZO_SELECCION'"), params).scalar() or 0
+    rechazos_aut = db.execute(text(f"SELECT COUNT(*) {base} AND etapa LIKE 'RECHAZO_AUT%'"), params).scalar() or 0
+    canceladas = db.execute(text(f"SELECT COUNT(*) {base} AND etapa = 'CANCELADO'"), params).scalar() or 0
+    en_tramite = db.execute(text(f"SELECT COUNT(*) {base} AND (etapa IS NULL OR etapa NOT IN ('POLIZA_ENVIADA','RECHAZO_EMISION','RECHAZO_EXPIRACION','RECHAZO_SELECCION','RECHAZO_AUT_INFO_AD','CANCELADO'))"), params).scalar() or 0
+
+    total_rechazos = rechazos_emision + rechazos_exp + rechazos_sel + rechazos_aut
+    tasa_emision = round((emitidas / total * 100), 1) if total > 0 else 0
+    tasa_rechazo = round((total_rechazos / total * 100), 1) if total > 0 else 0
+
+    avg_dias = db.execute(text(f"SELECT AVG(dias_tramite) {base} AND dias_tramite IS NOT NULL AND dias_tramite >= 0"), params).scalar()
+    avg_dias = round(avg_dias, 1) if avg_dias else 0
+
+    avg_emitidas = db.execute(text(f"SELECT AVG(dias_tramite) {base} AND etapa = 'POLIZA_ENVIADA' AND dias_tramite IS NOT NULL AND dias_tramite >= 0"), params).scalar()
+    avg_emitidas = round(avg_emitidas, 1) if avg_emitidas else 0
+
+    nuevos = db.execute(text(f"SELECT COUNT(*) {base} AND nuevo = 1"), params).scalar() or 0
+    reingresos = total - nuevos
+
+    # Solicitantes totales
+    total_solicitantes = db.execute(text(f"SELECT COALESCE(SUM(numsolicitantes), 0) {base}"), params).scalar() or 0
+
+    # Por mes (para gráfica)
+    mensual = db.execute(text(f"""
+        SELECT mes_recepcion, etapa, COUNT(*) c
+        {base} AND mes_recepcion IS NOT NULL
+        GROUP BY mes_recepcion, etapa
+        ORDER BY mes_recepcion
+    """), params).fetchall()
+
+    meses_data = {}
+    for m, e, c in mensual:
+        if m not in meses_data:
+            meses_data[m] = {"mes": m, "total": 0, "emitidas": 0, "rechazadas": 0, "tramite": 0}
+        meses_data[m]["total"] += c
+        if e == "POLIZA_ENVIADA":
+            meses_data[m]["emitidas"] += c
+        elif e and "RECHAZO" in e:
+            meses_data[m]["rechazadas"] += c
+        else:
+            meses_data[m]["tramite"] += c
+    por_mes = list(meses_data.values())
+
+    # Por ramo
+    ramos = db.execute(text(f"""
+        SELECT nomramo, COUNT(*) total,
+               SUM(CASE WHEN etapa = 'POLIZA_ENVIADA' THEN 1 ELSE 0 END) emitidas,
+               SUM(CASE WHEN etapa LIKE 'RECHAZO%' THEN 1 ELSE 0 END) rechazadas
+        {base} AND nomramo IS NOT NULL
+        GROUP BY nomramo ORDER BY total DESC
+    """), params).fetchall()
+    por_ramo = [{"ramo": r[0], "total": r[1], "emitidas": r[2], "rechazadas": r[3],
+                 "tasa_emision": round(r[2] / r[1] * 100, 1) if r[1] > 0 else 0} for r in ramos]
+
+    # Top agentes por solicitudes
+    agente_where = "WHERE ano_recepcion = :anio AND idagente IS NOT NULL"
+    if ramo:
+        agente_where += " AND UPPER(nomramo) = :ramo"
+    if etapa:
+        agente_where += " AND etapa = :etapa"
+    if agente:
+        agente_where += " AND idagente = :agente"
+
+    top_agentes = db.execute(text(f"""
+        SELECT idagente, COUNT(*) total,
+               SUM(CASE WHEN etapa = 'POLIZA_ENVIADA' THEN 1 ELSE 0 END) emitidas,
+               SUM(CASE WHEN etapa IN ('RECHAZO_EMISION','RECHAZO_EXPIRACION','RECHAZO_SELECCION','RECHAZO_AUT_INFO_AD') THEN 1 ELSE 0 END) rechazadas
+        FROM etapas_solicitudes
+        {agente_where}
+        GROUP BY idagente
+        ORDER BY total DESC LIMIT 15
+    """), params).fetchall()
+    agentes_data = [{
+        "agente_id": a[0], "total": a[1], "emitidas": a[2], "rechazadas": a[3],
+        "nombre": f"Agente {a[0]}", "tasa_emision": round(a[2] / a[1] * 100, 1) if a[1] > 0 else 0
+    } for a in top_agentes]
+
+    # Distribución de etapas
+    dist_etapas = db.execute(text(f"""
+        SELECT etapa, COUNT(*) c
+        {base} AND etapa IS NOT NULL
+        GROUP BY etapa ORDER BY c DESC
+    """), params).fetchall()
+    etapas_data = [{"etapa": e[0], "count": e[1],
+                    "porcentaje": round(e[1] / total * 100, 1) if total > 0 else 0} for e in dist_etapas]
+
+    # Rechazos recientes con observaciones
+    rechazos_recientes = db.execute(text(f"""
+        SELECT nosol, contratante, nomramo, etapa, observaciones, fecrecepcion, fecetapa, idagente, dias_tramite
+        {base} AND etapa LIKE 'RECHAZO%' AND observaciones IS NOT NULL
+        ORDER BY fecetapa DESC LIMIT 20
+    """), params).fetchall()
+    rechazos_lista = [{
+        "nosol": r[0], "contratante": r[1], "ramo": r[2], "etapa": r[3],
+        "observaciones": (r[4][:200] + "...") if r[4] and len(r[4]) > 200 else r[4],
+        "fecha_recepcion": r[5], "fecha_etapa": r[6], "agente": r[7], "dias": r[8]
+    } for r in rechazos_recientes]
+
+    # Disponibilidad de años
+    anios_disp = db.execute(text("""
+        SELECT DISTINCT ano_recepcion FROM etapas_solicitudes
+        WHERE ano_recepcion IS NOT NULL ORDER BY ano_recepcion
+    """)).fetchall()
+
+    return {
+        "kpis": {
+            "total_solicitudes": total,
+            "emitidas": emitidas,
+            "rechazos_emision": rechazos_emision,
+            "rechazos_expiracion": rechazos_exp,
+            "rechazos_seleccion": rechazos_sel,
+            "rechazos_autorizacion": rechazos_aut,
+            "canceladas": canceladas,
+            "en_tramite": en_tramite,
+            "total_rechazos": total_rechazos,
+            "tasa_emision": tasa_emision,
+            "tasa_rechazo": tasa_rechazo,
+            "promedio_dias_tramite": avg_dias,
+            "promedio_dias_emision": avg_emitidas,
+            "nuevos": nuevos,
+            "reingresos": reingresos,
+            "total_solicitantes": total_solicitantes,
+        },
+        "por_mes": por_mes,
+        "por_ramo": por_ramo,
+        "top_agentes": agentes_data,
+        "etapas": etapas_data,
+        "rechazos_recientes": rechazos_lista,
+        "anio": anio,
+        "anios_disponibles": [a[0] for a in anios_disp],
+        "filtros": {"ramo": ramo, "etapa": etapa, "agente": agente},
+    }

@@ -497,6 +497,40 @@ class DistribucionComision(Base):
     created_at = Column(String(30), default=lambda: datetime.now().isoformat())
 
 
+# ── Etapas de Solicitud (VW_CONCENTRADO_ETAPAS) ─────────────────
+class EtapaSolicitud(Base):
+    """Registro de etapas del pipeline de solicitudes AXA — VW_CONCENTRADO_ETAPAS"""
+    __tablename__ = "etapas_solicitudes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nosol = Column(String(30), index=True, nullable=False)       # Número de solicitud
+    nomramo = Column(String(50), index=True)                     # SALUD, VIDA
+    fecrecepcion = Column(String(30))                            # Fecha de recepción
+    contratante = Column(String(300))
+    dia_recepcion = Column(Integer)
+    mes_recepcion = Column(Integer, index=True)
+    ano_recepcion = Column(Integer, index=True)
+    etapa = Column(String(50), index=True)                       # POLIZA_ENVIADA, RECHAZO_EMISION, etc.
+    subetapa = Column(String(50))
+    fecetapa = Column(String(30))                                # Fecha de la etapa
+    dia_etapa = Column(Integer)
+    mes_etapa = Column(Integer)
+    ano_etapa = Column(Integer)
+    observaciones = Column(Text)
+    idagente = Column(String(20), index=True)                    # Código del agente
+    nuevo = Column(Integer)                                      # 1=nuevo, 0=reingreso
+    antaxa = Column(Integer)                                     # 1=antigüedad AXA
+    reingreso = Column(Integer)
+    contasol = Column(Integer)                                   # Contador de solicitud
+    poliza = Column(String(30))                                  # Póliza emitida o PENDIENTE
+    numsolicitantes = Column(Integer, default=1)
+    fecha_sistema = Column(String(30))
+    # Campos calculados
+    dias_tramite = Column(Integer)                               # Días entre recepción y etapa
+    fuente = Column(String(50), default="VW_CONCENTRADO")
+    created_at = Column(String(30), default=lambda: datetime.now().isoformat())
+
+
 # ── Configuración Dinámica (Fase 5.5) ───────────────────────────
 class Configuracion(Base):
     __tablename__ = "configuraciones"
