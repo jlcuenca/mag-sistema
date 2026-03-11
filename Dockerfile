@@ -1,5 +1,5 @@
 # Dockerfile — MAG Sistema Backend (FastAPI)
-# Proyecto GCP: magia
+# Proyecto GCP: magia-mag
 FROM python:3.12-slim
 
 WORKDIR /app
