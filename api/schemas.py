@@ -109,7 +109,9 @@ class PolizaListResponse(BaseModel):
 # ── Dashboard ─────────────────────────────────────────────────────
 class KPIs(BaseModel):
     polizas_nuevas_vida: int = 0
+    equivalencias_vida: float = 0
     prima_nueva_vida: float = 0
+    prima_total_nueva_vida: float = 0  # nueva + subsecuente
     polizas_nuevas_gmm: int = 0
     asegurados_nuevos_gmm: int = 0
     prima_nueva_gmm: float = 0
@@ -124,6 +126,16 @@ class KPIs(BaseModel):
     meta_gmm: int = 0
     meta_prima_vida: float = 0
     meta_prima_gmm: float = 0
+    # Año anterior
+    polizas_vida_ant: int = 0
+    equivalencias_vida_ant: float = 0
+    prima_nueva_vida_ant: float = 0
+    prima_total_nueva_vida_ant: float = 0
+    polizas_gmm_ant: int = 0
+    asegurados_gmm_ant: int = 0
+    prima_nueva_gmm_ant: float = 0
+    prima_subsecuente_vida_ant: float = 0
+    prima_subsecuente_gmm_ant: float = 0
 
 
 class ProduccionMensual(BaseModel):
@@ -142,7 +154,21 @@ class TopAgente(BaseModel):
     oficina: Optional[str] = None
     segmento: Optional[str] = None
     polizas_nuevas: int = 0
+    equivalencias: float = 0
+    asegurados: int = 0
+    prima_nueva: float = 0
     prima_total: float = 0
+
+
+class TopAgenteRamo(BaseModel):
+    """Top agente por ramo con asegurados/equivalencias."""
+    nombre_completo: Optional[str] = None
+    codigo_agente: Optional[str] = None
+    oficina: Optional[str] = None
+    polizas_nuevas: int = 0
+    asegurados: int = 0
+    equivalencias: float = 0
+    prima_nueva: float = 0
 
 
 class DistribucionGama(BaseModel):
@@ -154,7 +180,10 @@ class DistribucionGama(BaseModel):
 class DashboardResponse(BaseModel):
     kpis: KPIs
     produccion_mensual: List[ProduccionMensual]
+    produccion_mensual_ant: List[ProduccionMensual]
     top_agentes: List[TopAgente]
+    top_gmm: List[TopAgenteRamo]
+    top_vida: List[TopAgenteRamo]
     distribucion_gama: List[DistribucionGama]
 
 

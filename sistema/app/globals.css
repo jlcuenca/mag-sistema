@@ -671,6 +671,22 @@ select option {
   background: var(--grad-amber);
 }
 
+.progress-indigo {
+  background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
+}
+
+.progress-purple {
+  background: var(--grad-purple);
+}
+
+.progress-cyan {
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+}
+
+.progress-orange {
+  background: linear-gradient(135deg, var(--accent-orange), var(--accent-rose));
+}
+
 /* ── DIVIDER ── */
 .divider {
   height: 1px;

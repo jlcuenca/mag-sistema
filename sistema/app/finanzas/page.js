@@ -78,36 +78,57 @@ export default function Finanzas() {
                         </div>
                     ) : (
                         <>
-                            {/* ── KPI CARDS ── */}
+                            {/* ═══ INDICADORES ESTRELLA ═══ */}
+                            <div className="card" style={{ marginBottom: 20, borderTop: '3px solid var(--accent-amber)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-amber)', textTransform: 'uppercase', letterSpacing: 1 }}>⭐ Indicadores Estrella</div>
+                                </div>
+                                <div className="table-container">
+                                    <table style={{ fontSize: 12 }}>
+                                        <tbody>
+                                            <tr><td style={{ fontWeight: 600 }}>Recluta productiva</td><td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent-emerald)' }}>{data?.indicadores_estrella?.recluta_productiva ?? 11}</td></tr>
+                                            <tr><td style={{ fontWeight: 600 }}>Pólizas de Vida 1er. Año equivalentes</td><td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent-indigo)' }}>{data?.indicadores_estrella?.polizas_equivalentes ?? '341.8'}</td></tr>
+                                            <tr><td style={{ fontWeight: 600 }}>Número de agentes ALFA adicionales</td><td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent-blue)' }}>{data?.indicadores_estrella?.agentes_alfa ?? 13}</td></tr>
+                                            <tr><td style={{ fontWeight: 600 }}>Porcentaje de plantilla ALFA</td><td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent-cyan)' }}>{data?.indicadores_estrella?.pct_plantilla_alfa ?? '7.03%'}</td></tr>
+                                            <tr><td style={{ fontWeight: 600 }}>Asegurados nuevos GMI</td><td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent-emerald)' }}>{data?.indicadores_estrella?.asegurados_nuevos_gmi ?? '1,026'}</td></tr>
+                                            <tr><td style={{ fontWeight: 600 }}>Crecimiento en cartera individual</td><td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent-rose)' }}>{data?.indicadores_estrella?.crecimiento_cartera ?? '8.01%'}</td></tr>
+                                            <tr><td style={{ fontWeight: 600 }}>Agentes ganadores bonus BIC</td><td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent-amber)' }}>{data?.indicadores_estrella?.ganadores_bic ?? 55}</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* ── KPI CARDS (renombrados según SUGERIDA) ── */}
                             <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
                                 <div className="kpi-card" style={{ borderTop: '3px solid var(--accent-emerald)' }}>
                                     <div style={{ fontSize: 22, marginBottom: 6 }}>💰</div>
                                     <div className="kpi-value" style={{ color: 'var(--accent-emerald)', fontSize: 20 }}>{fmt(res.prima_cobrada_total)}</div>
                                     <div className="kpi-label">Prima Cobrada</div>
+                                    <div style={{ fontSize: 9, color: 'var(--accent-amber)', marginTop: 4, textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>RECLUTA PRODUCTIVA</div>
                                 </div>
                                 <div className="kpi-card" style={{ borderTop: '3px solid var(--accent-rose)' }}>
                                     <div style={{ fontSize: 22, marginBottom: 6 }}>💸</div>
                                     <div className="kpi-value" style={{ color: 'var(--accent-rose)', fontSize: 20 }}>{fmt(res.comision_total)}</div>
                                     <div className="kpi-label">Comisiones</div>
+                                    <div style={{ fontSize: 9, color: 'var(--accent-cyan)', marginTop: 4, textTransform: 'uppercase', fontWeight: 700 }}>PÓLIZAS EQUIVALENTES</div>
                                 </div>
                                 <div className="kpi-card" style={{ borderTop: '3px solid var(--accent-blue)' }}>
                                     <div style={{ fontSize: 22, marginBottom: 6 }}>📊</div>
                                     <div className="kpi-value" style={{ color: 'var(--accent-blue)', fontSize: 20 }}>{fmt(res.margen_total)}</div>
                                     <div className="kpi-label">Margen ({res.pct_margen}%)</div>
+                                    <div style={{ fontSize: 9, color: 'var(--accent-cyan)', marginTop: 4, textTransform: 'uppercase', fontWeight: 700 }}>ASEGURADOS NUEVOS</div>
                                 </div>
                                 <div className="kpi-card" style={{ borderTop: '3px solid var(--accent-cyan)' }}>
                                     <div style={{ fontSize: 22, marginBottom: 6 }}>🎯</div>
                                     <div className="kpi-value" style={{ color: 'var(--accent-cyan)', fontSize: 20 }}>{res.pct_cumplimiento}%</div>
                                     <div className="kpi-label">Cumplimiento Meta</div>
-                                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Meta: {fmt(res.meta_anual)}</div>
+                                    <div style={{ fontSize: 9, color: 'var(--accent-amber)', marginTop: 4, textTransform: 'uppercase', fontWeight: 700 }}>AGENTES ALFA Y % VS PLANTILLA</div>
                                 </div>
                                 <div className="kpi-card" style={{ borderTop: `3px solid ${TEND_COLORS[proy.tendencia]}` }}>
                                     <div style={{ fontSize: 22, marginBottom: 6 }}>{TEND_ICONS[proy.tendencia]}</div>
                                     <div className="kpi-value" style={{ color: TEND_COLORS[proy.tendencia], fontSize: 20 }}>{fmt(proy.proyeccion_anual)}</div>
                                     <div className="kpi-label">Proyección Cierre</div>
-                                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                                        {proy.variacion_vs_meta > 0 ? '▲' : '▼'} {proy.variacion_vs_meta}% vs meta
-                                    </div>
+                                    <div style={{ fontSize: 9, color: 'var(--accent-rose)', marginTop: 4, textTransform: 'uppercase', fontWeight: 700 }}>*CRECIMIENTO DE CARTERA LP</div>
                                 </div>
                                 <div className="kpi-card" style={{ borderTop: '3px solid var(--accent-amber)' }}>
                                     <div style={{ fontSize: 22, marginBottom: 6 }}>📅</div>
@@ -115,9 +136,7 @@ export default function Finanzas() {
                                         {res.variacion_interanual >= 0 ? '+' : ''}{res.variacion_interanual}%
                                     </div>
                                     <div className="kpi-label">vs {anio - 1}</div>
-                                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-                                        Mejor: {res.mejor_mes} · Menor: {res.peor_mes}
-                                    </div>
+                                    <div style={{ fontSize: 9, color: 'var(--accent-amber)', marginTop: 4, textTransform: 'uppercase', fontWeight: 700 }}>GANADORES DE BIC</div>
                                 </div>
                             </div>
 
@@ -417,6 +436,70 @@ export default function Finanzas() {
                                     </div>
                                 </div>
                             )}
+
+                            {/* ═══ TABLA DE METAS POR RAMO ═══ */}
+                            <div className="card" style={{ marginTop: 28, borderTop: '3px solid var(--accent-blue)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                                    <div>
+                                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>Metas por Ramo — {anio}</div>
+                                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Meta prorrateada para ser Año TOP y Año ATL</div>
+                                    </div>
+                                </div>
+                                <div className="table-container">
+                                    <table style={{ fontSize: 12 }}>
+                                        <thead>
+                                            <tr>
+                                                <th rowSpan={2} style={{ background: 'var(--bg-card)', zIndex: 2 }}></th>
+                                                <th colSpan={2} style={{ textAlign: 'center', background: 'rgba(99,102,241,0.12)', color: 'var(--accent-indigo)' }}>VIDA</th>
+                                                <th colSpan={2} style={{ textAlign: 'center', background: 'rgba(16,185,129,0.12)', color: 'var(--accent-emerald)' }}>SALUD</th>
+                                                <th colSpan={2} style={{ textAlign: 'center', background: 'rgba(59,130,246,0.12)', color: 'var(--accent-blue)' }}>AUTOS</th>
+                                                <th colSpan={2} style={{ textAlign: 'center', background: 'rgba(245,158,11,0.12)', color: 'var(--accent-amber)' }}>DAÑOS</th>
+                                                <th colSpan={2} style={{ textAlign: 'center', background: 'rgba(239,68,68,0.12)', color: 'var(--accent-rose)' }}>PRIMAS TOTALES</th>
+                                            </tr>
+                                            <tr>
+                                                <th style={{ textAlign: 'right', background: 'rgba(99,102,241,0.06)' }}>Pólizas</th>
+                                                <th style={{ textAlign: 'right', background: 'rgba(99,102,241,0.06)' }}>Prima Pagada</th>
+                                                <th style={{ textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>Aseg Nuevos</th>
+                                                <th style={{ textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>Prima Pagada</th>
+                                                <th style={{ textAlign: 'right', background: 'rgba(59,130,246,0.06)' }}>Crecimiento</th>
+                                                <th style={{ textAlign: 'right', background: 'rgba(59,130,246,0.06)' }}>Prima Pagada</th>
+                                                <th style={{ textAlign: 'right', background: 'rgba(245,158,11,0.06)' }}>Crecimiento</th>
+                                                <th style={{ textAlign: 'right', background: 'rgba(245,158,11,0.06)' }}>Prima Pagada</th>
+                                                <th style={{ textAlign: 'right', background: 'rgba(239,68,68,0.06)' }}>Crecimiento</th>
+                                                <th style={{ textAlign: 'right', background: 'rgba(239,68,68,0.06)' }}>Prima Pagada</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style={{ fontWeight: 700, color: 'var(--accent-emerald)' }}>Meta Año TOP</td>
+                                                <td style={{ textAlign: 'right' }}>48</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(2000000)}</td>
+                                                <td style={{ textAlign: 'right' }}>100.0</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(830000)}</td>
+                                                <td style={{ textAlign: 'right' }}>10%</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(5000000)}</td>
+                                                <td style={{ textAlign: 'right' }}>5%</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(10000000)}</td>
+                                                <td style={{ textAlign: 'right' }}>5%</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent-emerald)' }}>{fmt(21000000)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style={{ fontWeight: 700, color: 'var(--accent-blue)' }}>Meta Año ATL</td>
+                                                <td style={{ textAlign: 'right' }}>24</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(500000)}</td>
+                                                <td style={{ textAlign: 'right' }}>50.0</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(415000)}</td>
+                                                <td style={{ textAlign: 'right' }}>15%</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(1500000)}</td>
+                                                <td style={{ textAlign: 'right' }}>5%</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(5000000)}</td>
+                                                <td style={{ textAlign: 'right' }}>15%</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent-blue)' }}>{fmt(10500000)}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </>
                     )}
                 </div>

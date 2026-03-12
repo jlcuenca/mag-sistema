@@ -19,7 +19,7 @@ from .database import (
 from .schemas import (
     AgenteOut, AgenteCreate,
     PolizaOut, PolizaCreate, PolizaListResponse,
-    DashboardResponse, KPIs, ProduccionMensual, TopAgente, DistribucionGama,
+    DashboardResponse, KPIs, ProduccionMensual, TopAgente, TopAgenteRamo, DistribucionGama,
     ConciliacionResponse, ResumenConciliacion, ItemConciliacion,
     ImportacionResult,
     EjecutivoResponse, ComparativoRamo, ResumenSegmento, AgenteOperativo,
@@ -50,9 +50,10 @@ def get_dashboard(
     db: Session = Depends(get_db)
 ):
     """KPIs principales, producción mensual, top agentes y distribución por gama."""
+    anio_ant = anio - 1
 
-    # ── Consulta base ──
-    polizas = db.execute(text("""
+    # ── Consulta base (año actual + anterior) ──
+    polizas_all = db.execute(text("""
         SELECT p.*, pr.ramo_codigo, pr.ramo_nombre, pr.plan,
                a.nombre_completo as agente_nombre, a.codigo_agente,
                a.oficina, a.gerencia, a.territorio,
@@ -60,10 +61,13 @@ def get_dashboard(
         FROM polizas p
         LEFT JOIN productos pr ON p.producto_id = pr.id
         LEFT JOIN agentes a ON p.agente_id = a.id
-        WHERE p.anio_aplicacion = :anio
-    """), {"anio": anio}).mappings().all()
+        WHERE p.anio_aplicacion IN (:anio, :anio_ant)
+    """), {"anio": anio, "anio_ant": anio_ant}).mappings().all()
 
-    # ── KPIs ──
+    polizas = [p for p in polizas_all if p["anio_aplicacion"] == anio]
+    pol_ant = [p for p in polizas_all if p["anio_aplicacion"] == anio_ant]
+
+    # ── KPIs (año actual) ──
     nuevas_vida  = [p for p in polizas if p["ramo_codigo"]==11 and p["tipo_poliza"]=="NUEVA" and p["tipo_prima"]=="BASICA"]
     nuevas_gmm   = [p for p in polizas if p["ramo_codigo"]==34 and p["tipo_poliza"]=="NUEVA"]
     nuevas_autos = [p for p in polizas if p["ramo_codigo"]==90 and p["tipo_poliza"]=="NUEVA"]
@@ -72,17 +76,29 @@ def get_dashboard(
     subs_autos   = [p for p in polizas if p["ramo_codigo"]==90 and p["tipo_poliza"]=="SUBSECUENTE"]
     canceladas   = [p for p in polizas if p["status_recibo"] not in ("PAGADA", "AL CORRIENTE", None)]
 
+    # KPIs año anterior
+    ant_nuevas_vida = [p for p in pol_ant if p["ramo_codigo"]==11 and p["tipo_poliza"]=="NUEVA" and p["tipo_prima"]=="BASICA"]
+    ant_nuevas_gmm  = [p for p in pol_ant if p["ramo_codigo"]==34 and p["tipo_poliza"]=="NUEVA"]
+    ant_subs_vida   = [p for p in pol_ant if p["ramo_codigo"]==11 and p["tipo_poliza"]=="SUBSECUENTE"]
+    ant_subs_gmm    = [p for p in pol_ant if p["ramo_codigo"]==34 and p["tipo_poliza"]=="SUBSECUENTE"]
+
     meta = db.execute(text("SELECT * FROM metas WHERE anio=:a AND periodo IS NULL"), {"a": anio}).mappings().first()
+
+    prima_nueva_vida_val = sum(p["prima_neta"] or 0 for p in nuevas_vida)
+    prima_sub_vida_val   = sum(p["prima_neta"] or 0 for p in subs_vida)
+    equiv_vida_val       = sum(p["equivalencias_emitidas"] or 0 for p in nuevas_vida)
 
     kpis = KPIs(
         polizas_nuevas_vida   = len(nuevas_vida),
-        prima_nueva_vida      = sum(p["prima_neta"] or 0 for p in nuevas_vida),
+        equivalencias_vida    = round(equiv_vida_val, 1),
+        prima_nueva_vida      = prima_nueva_vida_val,
+        prima_total_nueva_vida= prima_nueva_vida_val + prima_sub_vida_val,
         polizas_nuevas_gmm    = len(nuevas_gmm),
         asegurados_nuevos_gmm = sum(p["num_asegurados"] or 1 for p in nuevas_gmm),
         prima_nueva_gmm       = sum(p["prima_neta"] or 0 for p in nuevas_gmm),
         polizas_nuevas_autos  = len(nuevas_autos),
         prima_nueva_autos     = sum(p["prima_neta"] or 0 for p in nuevas_autos),
-        prima_subsecuente_vida= sum(p["prima_neta"] or 0 for p in subs_vida),
+        prima_subsecuente_vida= prima_sub_vida_val,
         prima_subsecuente_gmm = sum(p["prima_neta"] or 0 for p in subs_gmm),
         prima_subsecuente_autos= sum(p["prima_neta"] or 0 for p in subs_autos),
         polizas_canceladas    = len(canceladas),
@@ -91,6 +107,16 @@ def get_dashboard(
         meta_gmm              = meta["meta_polizas_gmm"] if meta else 0,
         meta_prima_vida       = meta["meta_prima_vida"] if meta else 0,
         meta_prima_gmm        = meta["meta_prima_gmm"] if meta else 0,
+        # Año anterior
+        polizas_vida_ant      = len(ant_nuevas_vida),
+        equivalencias_vida_ant= round(sum(p["equivalencias_emitidas"] or 0 for p in ant_nuevas_vida), 1),
+        prima_nueva_vida_ant  = sum(p["prima_neta"] or 0 for p in ant_nuevas_vida),
+        prima_total_nueva_vida_ant = sum(p["prima_neta"] or 0 for p in ant_nuevas_vida) + sum(p["prima_neta"] or 0 for p in ant_subs_vida),
+        polizas_gmm_ant       = len(ant_nuevas_gmm),
+        asegurados_gmm_ant    = sum(p["num_asegurados"] or 1 for p in ant_nuevas_gmm),
+        prima_nueva_gmm_ant   = sum(p["prima_neta"] or 0 for p in ant_nuevas_gmm),
+        prima_subsecuente_vida_ant = sum(p["prima_neta"] or 0 for p in ant_subs_vida),
+        prima_subsecuente_gmm_ant  = sum(p["prima_neta"] or 0 for p in ant_subs_gmm),
     )
 
     # ── Producción mensual ──
@@ -121,12 +147,43 @@ def get_dashboard(
         ) for r in mensual_raw
     ]
 
-    # ── Top agentes ──
+    # ── Producción mensual (año anterior) ──
+    mensual_ant_raw = db.execute(text("""
+        SELECT p.periodo_aplicacion as periodo,
+               SUM(CASE WHEN pr.ramo_codigo=11 AND p.tipo_poliza='NUEVA' THEN 1 ELSE 0 END) as polizas_vida,
+               SUM(CASE WHEN pr.ramo_codigo=34 AND p.tipo_poliza='NUEVA' THEN 1 ELSE 0 END) as polizas_gmm,
+               SUM(CASE WHEN pr.ramo_codigo=90 AND p.tipo_poliza='NUEVA' THEN 1 ELSE 0 END) as polizas_autos,
+               SUM(CASE WHEN pr.ramo_codigo=11 AND p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_vida,
+               SUM(CASE WHEN pr.ramo_codigo=34 AND p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_gmm,
+               SUM(CASE WHEN pr.ramo_codigo=90 AND p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_autos
+        FROM polizas p
+        LEFT JOIN productos pr ON p.producto_id = pr.id
+        WHERE p.anio_aplicacion = :anio_ant
+        GROUP BY p.periodo_aplicacion
+        ORDER BY p.periodo_aplicacion
+    """), {"anio_ant": anio_ant}).mappings().all()
+
+    produccion_mensual_ant = [
+        ProduccionMensual(
+            periodo=r["periodo"] or "",
+            polizas_vida=r["polizas_vida"] or 0,
+            polizas_gmm=r["polizas_gmm"] or 0,
+            polizas_autos=r["polizas_autos"] or 0,
+            prima_vida=round(r["prima_vida"] or 0, 2),
+            prima_gmm=round(r["prima_gmm"] or 0, 2),
+            prima_autos=round(r["prima_autos"] or 0, 2),
+        ) for r in mensual_ant_raw
+    ]
+
+    # ── Top agentes (general) ──
     top_raw = db.execute(text("""
         SELECT a.nombre_completo, a.codigo_agente, a.oficina,
                a.segmento_nombre as segmento,
                COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) as polizas_nuevas,
-               SUM(CASE WHEN p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_total
+               SUM(CASE WHEN p.tipo_poliza='NUEVA' THEN COALESCE(p.equivalencias_emitidas, 0) ELSE 0 END) as equivalencias,
+               SUM(CASE WHEN p.tipo_poliza='NUEVA' THEN COALESCE(p.num_asegurados, 1) ELSE 0 END) as asegurados,
+               SUM(CASE WHEN p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_nueva,
+               SUM(p.prima_neta) as prima_total
         FROM polizas p
         LEFT JOIN agentes a ON p.agente_id = a.id
         WHERE p.anio_aplicacion = :anio
@@ -142,8 +199,67 @@ def get_dashboard(
             oficina=r["oficina"],
             segmento=r["segmento"],
             polizas_nuevas=r["polizas_nuevas"] or 0,
+            equivalencias=round(r["equivalencias"] or 0, 1),
+            asegurados=r["asegurados"] or 0,
+            prima_nueva=round(r["prima_nueva"] or 0, 2),
             prima_total=round(r["prima_total"] or 0, 2),
         ) for r in top_raw
+    ]
+
+    # ── Top 5 GMM (por asegurados) ──
+    top_gmm_raw = db.execute(text("""
+        SELECT a.nombre_completo, a.codigo_agente, a.oficina,
+               COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) as polizas_nuevas,
+               SUM(CASE WHEN p.tipo_poliza='NUEVA' THEN COALESCE(p.num_asegurados, 1) ELSE 0 END) as asegurados,
+               SUM(CASE WHEN p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_nueva
+        FROM polizas p
+        LEFT JOIN productos pr ON p.producto_id = pr.id
+        LEFT JOIN agentes a ON p.agente_id = a.id
+        WHERE p.anio_aplicacion = :anio AND pr.ramo_codigo = 34
+        GROUP BY a.id
+        HAVING polizas_nuevas > 0
+        ORDER BY asegurados DESC
+        LIMIT 5
+    """), {"anio": anio}).mappings().all()
+
+    top_gmm = [
+        TopAgenteRamo(
+            nombre_completo=r["nombre_completo"],
+            codigo_agente=r["codigo_agente"],
+            oficina=r["oficina"],
+            polizas_nuevas=r["polizas_nuevas"] or 0,
+            asegurados=r["asegurados"] or 0,
+            prima_nueva=round(r["prima_nueva"] or 0, 2),
+        ) for r in top_gmm_raw
+    ]
+
+    # ── Top 5 VIDA (por equivalencias) ──
+    top_vida_raw = db.execute(text("""
+        SELECT a.nombre_completo, a.codigo_agente, a.oficina,
+               COUNT(CASE WHEN p.tipo_poliza='NUEVA' AND p.tipo_prima='BASICA' THEN 1 END) as polizas_nuevas,
+               SUM(CASE WHEN p.tipo_poliza='NUEVA' AND p.tipo_prima='BASICA'
+                   THEN COALESCE(p.equivalencias_emitidas, 0) ELSE 0 END) as equivalencias,
+               SUM(CASE WHEN p.tipo_poliza='NUEVA' AND p.tipo_prima='BASICA'
+                   THEN p.prima_neta ELSE 0 END) as prima_nueva
+        FROM polizas p
+        LEFT JOIN productos pr ON p.producto_id = pr.id
+        LEFT JOIN agentes a ON p.agente_id = a.id
+        WHERE p.anio_aplicacion = :anio AND pr.ramo_codigo = 11
+        GROUP BY a.id
+        HAVING polizas_nuevas > 0
+        ORDER BY equivalencias DESC
+        LIMIT 5
+    """), {"anio": anio}).mappings().all()
+
+    top_vida = [
+        TopAgenteRamo(
+            nombre_completo=r["nombre_completo"],
+            codigo_agente=r["codigo_agente"],
+            oficina=r["oficina"],
+            polizas_nuevas=r["polizas_nuevas"] or 0,
+            equivalencias=round(r["equivalencias"] or 0, 1),
+            prima_nueva=round(r["prima_nueva"] or 0, 2),
+        ) for r in top_vida_raw
     ]
 
     # ── Distribución por gama GMM ──
@@ -163,7 +279,10 @@ def get_dashboard(
     return DashboardResponse(
         kpis=kpis,
         produccion_mensual=produccion_mensual,
+        produccion_mensual_ant=produccion_mensual_ant,
         top_agentes=top_agentes,
+        top_gmm=top_gmm,
+        top_vida=top_vida,
         distribucion_gama=dist_gama,
     )
 
