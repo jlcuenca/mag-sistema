@@ -33,6 +33,7 @@ ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3000",
+    "https://mag-frontend-922967332336.us-central1.run.app",
 ]
 if FRONTEND_URL:
     ALLOWED_ORIGINS.append(FRONTEND_URL.rstrip("/"))
