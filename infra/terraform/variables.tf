@@ -118,3 +118,17 @@ variable "custom_domain_api" {
   type        = string
   default     = ""
 }
+
+# ── GitHub (para Cloud Build triggers) ──
+
+variable "github_owner" {
+  description = "Owner del repositorio GitHub"
+  type        = string
+  default     = "jlcuenca"
+}
+
+variable "github_repo" {
+  description = "Nombre del repositorio GitHub"
+  type        = string
+  default     = "mag-sistema"
+}

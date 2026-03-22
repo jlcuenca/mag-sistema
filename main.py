@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 
 from api.database import init_db, SessionLocal
 from api.seed import seed_demo
+from api.tenant import get_tenant_config, get_tenant_branding, validate_tenant, TENANT_ID, TENANT_DISPLAY_NAME
 from api.routers import (
     router_dashboard,
     router_polizas,
@@ -41,7 +42,8 @@ if FRONTEND_URL:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("[MAG] Iniciando MAG Sistema API...")
+    print(f"[MAG] Iniciando MAG Sistema API — Tenant: {TENANT_ID}")
+    validate_tenant()
     init_db()
     db = SessionLocal()
     try:
@@ -56,9 +58,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="MAG Sistema API",
-    description="Backend FastAPI para gestion de polizas Vida y GMM — Promotoria MAG / AXA Seguros",
-    version="0.1.0",
+    title=f"MAG Sistema API — {TENANT_DISPLAY_NAME}",
+    description=f"Backend FastAPI para gestión de pólizas — {TENANT_DISPLAY_NAME}",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -88,17 +90,28 @@ app.include_router(router_indicadores_sol)
 
 @app.get("/", tags=["Sistema"])
 def root():
+    tenant = get_tenant_config()
     return {
         "sistema": "MAG Sistema API",
-        "version": "0.1.0",
-        "promotoria": "MAG - AXA Seguros Mexico",
-        "ramos": ["Vida Individual", "GMM Individual"],
+        "version": "0.2.0",
+        "tenant": tenant["id"],
+        "promotoria": tenant["display_name"],
+        "ramos": tenant["ramos"],
         "docs": "/docs",
         "status": "operativo",
-        "demo": IS_DEMO,
+        "demo": tenant["is_demo"],
+    }
+
+
+@app.get("/tenant", tags=["Sistema"])
+def tenant_info():
+    """Configuración del tenant actual (para frontend)."""
+    return {
+        **get_tenant_config(),
+        "branding": get_tenant_branding(),
     }
 
 
 @app.get("/health", tags=["Sistema"])
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "tenant": TENANT_ID}
