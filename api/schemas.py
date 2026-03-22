@@ -187,6 +187,65 @@ class DashboardResponse(BaseModel):
     distribucion_gama: List[DistribucionGama]
 
 
+# ── Top Agentes por Ramo con Filtros Granulares (GAP Looker) ──────
+class TopAgenteRamoDetalle(BaseModel):
+    """Top agente con métricas detalladas y filtros granulares."""
+    nombre_completo: Optional[str] = None
+    codigo_agente: Optional[str] = None
+    oficina: Optional[str] = None
+    segmento: Optional[str] = None
+    gestion: Optional[str] = None
+    lider_codigo: Optional[str] = None        # Código del líder/promotor
+    polizas_nuevas: int = 0
+    polizas_subsecuentes: int = 0
+    polizas_total: int = 0
+    polizas_nueva_formal: int = 0             # flag_nueva_formal=1
+    asegurados: int = 0
+    equivalencias: float = 0
+    prima_nueva: float = 0
+    prima_subsecuente: float = 0
+    prima_total: float = 0
+    prima_acumulada: float = 0
+    prima_anual_pesos: float = 0              # Prima convertida a MXN
+    prima_sin_fp: float = 0                   # Prima sin ajuste forma pago
+    monedas: dict = {}                        # {"MN": 15, "UDIS": 3}
+    num_gamas: dict = {}                      # {"ALTA": 5, "MEDIA": 3, "BASICA": 1}
+    trimestres: dict = {}                     # {"Q1": 10000, "Q2": 15000, ...}
+
+
+class TopAgentesRamoResponse(BaseModel):
+    """Respuesta del endpoint de Top Agentes con filtros granulares."""
+    agentes: List[TopAgenteRamoDetalle]
+    total_agentes: int = 0
+    total_polizas: int = 0
+    total_prima: float = 0
+    total_asegurados: int = 0
+    total_equivalencias: float = 0
+    distribucion_gama: List[DistribucionGama] = []
+    filtros_disponibles: dict = {}
+
+
+# ── Tabla Pivot: Agente × Periodo (GAP Looker) ───────────────────
+class PivotAgenteRow(BaseModel):
+    """Una fila de la tabla pivot: agente con valores por periodo."""
+    nombre_completo: Optional[str] = None
+    codigo_agente: Optional[str] = None
+    segmento: Optional[str] = None
+    periodos: dict = {}            # {"2025-01": {"polizas": 3, "prima": 50000, "asegurados": 10}, ...}
+    total_polizas: int = 0
+    total_prima: float = 0
+    total_asegurados: int = 0
+    total_equivalencias: float = 0
+
+
+class PivotAgentesResponse(BaseModel):
+    """Respuesta de tabla pivot Agente × Periodo."""
+    filas: List[PivotAgenteRow]
+    periodos_disponibles: List[str] = []
+    total_agentes: int = 0
+    metrica: str = "prima"         # prima, polizas, asegurados, equivalencias
+
+
 # ── Dashboard Ejecutivo (Fase 1) ──────────────────────────────────
 class ComparativoRamo(BaseModel):
     """Comparativo interanual por ramo (replica VISTAS.xlsx)"""

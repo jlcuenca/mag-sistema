@@ -26,6 +26,7 @@ const navSections = [
         items: [
             { href: '/conciliacion', icon: '🔄', label: 'Conciliación AXA' },
             { href: '/produccion', icon: '📈', label: 'Producción Histórica' },
+            { href: '/top-agentes', icon: '🏆', label: 'Top Agentes' },
             { href: '/cartera', icon: '💼', label: 'Cartera' },
         ],
     },

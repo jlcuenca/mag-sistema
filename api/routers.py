@@ -20,6 +20,7 @@ from .schemas import (
     AgenteOut, AgenteCreate,
     PolizaOut, PolizaCreate, PolizaListResponse,
     DashboardResponse, KPIs, ProduccionMensual, TopAgente, TopAgenteRamo, DistribucionGama,
+    TopAgenteRamoDetalle, TopAgentesRamoResponse, PivotAgenteRow, PivotAgentesResponse,
     ConciliacionResponse, ResumenConciliacion, ItemConciliacion,
     ImportacionResult,
     EjecutivoResponse, ComparativoRamo, ResumenSegmento, AgenteOperativo,
@@ -284,6 +285,345 @@ def get_dashboard(
         top_gmm=top_gmm,
         top_vida=top_vida,
         distribucion_gama=dist_gama,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# GAP LOOKER 1: TOP AGENTES POR RAMO CON FILTROS GRANULARES
+# ═══════════════════════════════════════════════════════════════════
+
+@router_dashboard.get("/top-agentes-ramo", response_model=TopAgentesRamoResponse)
+def get_top_agentes_ramo(
+    anio: int = Query(2025, description="Año de análisis"),
+    ramo: Optional[str] = Query(None, description="Filtrar por ramo: vida, gmm, autos"),
+    gama: Optional[str] = Query(None, description="Filtrar por gama: ALTA, MEDIA, BASICA"),
+    segmento: Optional[str] = Query(None, description="Filtrar por segmento: ALFA, BETA, OMEGA"),
+    forma_pago: Optional[str] = Query(None, description="Filtrar por forma de pago"),
+    tipo: Optional[str] = Query(None, description="Filtrar por tipo: NUEVA, SUBSECUENTE, todas"),
+    trimestre: Optional[str] = Query(None, description="Filtrar por trimestre: Q1, Q2, Q3, Q4"),
+    primer_anio: Optional[bool] = Query(None, description="Solo pólizas de primer año"),
+    lider: Optional[str] = Query(None, description="Filtrar por código de líder/promotor"),
+    moneda: Optional[str] = Query(None, description="Filtrar por moneda: MN, UDIS, USD"),
+    nueva_formal: Optional[bool] = Query(None, description="Solo pólizas nueva formal (flag_nueva_formal=1)"),
+    orden: str = Query("prima", description="Ordenar por: prima, asegurados, polizas, equivalencias"),
+    top_n: int = Query(20, description="Cantidad de agentes (0=todos)"),
+    db: Session = Depends(get_db)
+):
+    """Top agentes por ramo con filtros granulares — cierra GAP de Looker págs 3-4."""
+
+    # ── Build dynamic filter ──
+    filtro_ramo = ""
+    params = {"anio": anio}
+
+    ramo_map = {"vida": 11, "gmm": 34, "autos": 90}
+    if ramo and ramo.lower() in ramo_map:
+        filtro_ramo += " AND pr.ramo_codigo = :ramo_codigo"
+        params["ramo_codigo"] = ramo_map[ramo.lower()]
+
+    if gama:
+        filtro_ramo += " AND UPPER(p.gama) = :gama"
+        params["gama"] = gama.upper()
+
+    if segmento:
+        filtro_ramo += " AND UPPER(a.segmento_agrupado) = :segmento"
+        params["segmento"] = segmento.upper()
+
+    if forma_pago:
+        filtro_ramo += " AND UPPER(p.forma_pago) = :forma_pago"
+        params["forma_pago"] = forma_pago.upper()
+
+    if tipo and tipo.upper() in ("NUEVA", "SUBSECUENTE"):
+        filtro_ramo += " AND p.tipo_poliza = :tipo_poliza"
+        params["tipo_poliza"] = tipo.upper()
+
+    if trimestre and trimestre.upper() in ("Q1", "Q2", "Q3", "Q4"):
+        filtro_ramo += " AND UPPER(p.trimestre) = :trimestre"
+        params["trimestre"] = trimestre.upper()
+
+    if primer_anio:
+        filtro_ramo += " AND p.primer_anio IS NOT NULL AND p.primer_anio != ''"
+
+    if lider:
+        filtro_ramo += " AND a.lider_codigo = :lider_codigo"
+        params["lider_codigo"] = lider
+
+    if moneda:
+        filtro_ramo += " AND UPPER(p.moneda) = :moneda"
+        params["moneda"] = moneda.upper()
+
+    if nueva_formal:
+        filtro_ramo += " AND p.flag_nueva_formal = 1"
+
+    # ── Query ──
+    raw = db.execute(text(f"""
+        SELECT a.nombre_completo, a.codigo_agente, a.oficina,
+               a.segmento_agrupado as segmento, a.gestion_comercial as gestion,
+               a.lider_codigo,
+               COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) as polizas_nuevas,
+               COUNT(CASE WHEN p.tipo_poliza='SUBSECUENTE' THEN 1 END) as polizas_subs,
+               COUNT(*) as polizas_total,
+               SUM(CASE WHEN p.flag_nueva_formal=1 THEN 1 ELSE 0 END) as polizas_nueva_formal,
+               SUM(COALESCE(p.num_asegurados, 1)) as asegurados,
+               SUM(COALESCE(p.equivalencias_emitidas, 0)) as equivalencias,
+               SUM(CASE WHEN p.tipo_poliza='NUEVA' THEN COALESCE(p.prima_neta, 0) ELSE 0 END) as prima_nueva,
+               SUM(CASE WHEN p.tipo_poliza='SUBSECUENTE' THEN COALESCE(p.prima_neta, 0) ELSE 0 END) as prima_subs,
+               SUM(COALESCE(p.prima_neta, 0)) as prima_total,
+               SUM(COALESCE(p.neta_acumulada, p.prima_neta, 0)) as prima_acum,
+               SUM(COALESCE(p.prima_anual_pesos, 0)) as prima_anual_pesos,
+               SUM(COALESCE(p.neta_sin_forma, 0)) as prima_sin_fp,
+               p.gama as gama_val,
+               p.moneda as moneda_val
+        FROM polizas p
+        LEFT JOIN productos pr ON p.producto_id = pr.id
+        LEFT JOIN agentes a ON p.agente_id = a.id
+        WHERE p.anio_aplicacion = :anio {filtro_ramo}
+          AND a.nombre_completo IS NOT NULL
+        GROUP BY a.id, p.gama, p.moneda
+    """), params).mappings().all()
+
+    # ── Aggregate by agent ──
+    agents = {}
+    for r in raw:
+        key = r["codigo_agente"]
+        if key not in agents:
+            agents[key] = {
+                "nombre_completo": r["nombre_completo"],
+                "codigo_agente": r["codigo_agente"],
+                "oficina": r["oficina"],
+                "segmento": r["segmento"],
+                "gestion": r["gestion"],
+                "lider_codigo": r["lider_codigo"],
+                "polizas_nuevas": 0, "polizas_subs": 0, "polizas_total": 0,
+                "polizas_nueva_formal": 0,
+                "asegurados": 0, "equivalencias": 0.0,
+                "prima_nueva": 0.0, "prima_subs": 0.0, "prima_total": 0.0, "prima_acum": 0.0,
+                "prima_anual_pesos": 0.0, "prima_sin_fp": 0.0,
+                "gamas": {}, "monedas": {},
+            }
+        a = agents[key]
+        a["polizas_nuevas"] += r["polizas_nuevas"] or 0
+        a["polizas_subs"] += r["polizas_subs"] or 0
+        a["polizas_total"] += r["polizas_total"] or 0
+        a["polizas_nueva_formal"] += r["polizas_nueva_formal"] or 0
+        a["asegurados"] += r["asegurados"] or 0
+        a["equivalencias"] += r["equivalencias"] or 0
+        a["prima_nueva"] += r["prima_nueva"] or 0
+        a["prima_subs"] += r["prima_subs"] or 0
+        a["prima_total"] += r["prima_total"] or 0
+        a["prima_acum"] += r["prima_acum"] or 0
+        a["prima_anual_pesos"] += r["prima_anual_pesos"] or 0
+        a["prima_sin_fp"] += r["prima_sin_fp"] or 0
+        gama_name = r["gama_val"] or "SIN GAMA"
+        a["gamas"][gama_name] = a["gamas"].get(gama_name, 0) + (r["polizas_total"] or 0)
+        moneda_name = r["moneda_val"] or "MN"
+        a["monedas"][moneda_name] = a["monedas"].get(moneda_name, 0) + (r["polizas_total"] or 0)
+
+    # ── Get trimestre breakdown per agent ──
+    trim_raw = db.execute(text(f"""
+        SELECT a.codigo_agente, COALESCE(p.trimestre, 'S/T') as trim,
+               SUM(COALESCE(p.prima_neta, 0)) as prima
+        FROM polizas p
+        LEFT JOIN productos pr ON p.producto_id = pr.id
+        LEFT JOIN agentes a ON p.agente_id = a.id
+        WHERE p.anio_aplicacion = :anio {filtro_ramo} AND a.codigo_agente IS NOT NULL
+        GROUP BY a.codigo_agente, p.trimestre
+    """), params).mappings().all()
+
+    for t in trim_raw:
+        key = t["codigo_agente"]
+        if key in agents:
+            if "trimestres" not in agents[key]:
+                agents[key]["trimestres"] = {}
+            agents[key]["trimestres"][t["trim"]] = round(t["prima"] or 0, 2)
+
+    # ── Sort ──
+    order_key = {
+        "prima": "prima_total", "asegurados": "asegurados",
+        "polizas": "polizas_total", "equivalencias": "equivalencias"
+    }.get(orden, "prima_total")
+
+    sorted_agents = sorted(agents.values(), key=lambda x: x[order_key], reverse=True)
+    if top_n > 0:
+        sorted_agents = sorted_agents[:top_n]
+
+    # ── Dist gama ──
+    gama_agg = {}
+    for a in agents.values():
+        for g, cnt in a["gamas"].items():
+            if g not in gama_agg:
+                gama_agg[g] = {"total": 0, "prima": 0}
+            gama_agg[g]["total"] += cnt
+
+    # ── Filtros disponibles ──
+    filtros_disp = db.execute(text(f"""
+        SELECT DISTINCT p.gama, p.forma_pago, p.trimestre, a.segmento_agrupado,
+               a.lider_codigo, p.moneda
+        FROM polizas p
+        LEFT JOIN agentes a ON p.agente_id = a.id
+        LEFT JOIN productos pr ON p.producto_id = pr.id
+        WHERE p.anio_aplicacion = :anio
+          AND ({'pr.ramo_codigo = :ramo_codigo' if 'ramo_codigo' in params else '1=1'})
+    """), params).mappings().all()
+
+    gamas_disp = sorted(set(r["gama"] for r in filtros_disp if r["gama"]))
+    formas_disp = sorted(set(r["forma_pago"] for r in filtros_disp if r["forma_pago"]))
+    segmentos_disp = sorted(set(r["segmento_agrupado"] for r in filtros_disp if r["segmento_agrupado"]))
+    trimestres_disp = sorted(set(r["trimestre"] for r in filtros_disp if r["trimestre"]))
+    lideres_disp = sorted(set(r["lider_codigo"] for r in filtros_disp if r["lider_codigo"]))
+    monedas_disp = sorted(set(r["moneda"] for r in filtros_disp if r["moneda"]))
+
+    result_agentes = [
+        TopAgenteRamoDetalle(
+            nombre_completo=a["nombre_completo"],
+            codigo_agente=a["codigo_agente"],
+            oficina=a["oficina"],
+            segmento=a["segmento"],
+            gestion=a["gestion"],
+            lider_codigo=a["lider_codigo"],
+            polizas_nuevas=a["polizas_nuevas"],
+            polizas_subsecuentes=a["polizas_subs"],
+            polizas_total=a["polizas_total"],
+            polizas_nueva_formal=a["polizas_nueva_formal"],
+            asegurados=a["asegurados"],
+            equivalencias=round(a["equivalencias"], 1),
+            prima_nueva=round(a["prima_nueva"], 2),
+            prima_subsecuente=round(a["prima_subs"], 2),
+            prima_total=round(a["prima_total"], 2),
+            prima_acumulada=round(a["prima_acum"], 2),
+            prima_anual_pesos=round(a["prima_anual_pesos"], 2),
+            prima_sin_fp=round(a["prima_sin_fp"], 2),
+            monedas=a["monedas"],
+            num_gamas=a["gamas"],
+            trimestres=a.get("trimestres", {}),
+        ) for a in sorted_agents
+    ]
+
+    return TopAgentesRamoResponse(
+        agentes=result_agentes,
+        total_agentes=len(agents),
+        total_polizas=sum(a["polizas_total"] for a in agents.values()),
+        total_prima=round(sum(a["prima_total"] for a in agents.values()), 2),
+        total_asegurados=sum(a["asegurados"] for a in agents.values()),
+        total_equivalencias=round(sum(a["equivalencias"] for a in agents.values()), 1),
+        distribucion_gama=[
+            DistribucionGama(gama=g, total=v["total"], prima=0)
+            for g, v in sorted(gama_agg.items(), key=lambda x: x[1]["total"], reverse=True)
+        ],
+        filtros_disponibles={
+            "gamas": gamas_disp,
+            "formas_pago": formas_disp,
+            "segmentos": segmentos_disp,
+            "trimestres": trimestres_disp,
+            "lideres": lideres_disp,
+            "monedas": monedas_disp,
+            "ramos": ["vida", "gmm", "autos"],
+            "tipos": ["NUEVA", "SUBSECUENTE"],
+        },
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# GAP LOOKER 3: TABLA PIVOT — AGENTE × PERIODO
+# ═══════════════════════════════════════════════════════════════════
+
+@router_dashboard.get("/pivot-agentes", response_model=PivotAgentesResponse)
+def get_pivot_agentes(
+    anio: int = Query(2025, description="Año de análisis"),
+    ramo: Optional[str] = Query(None, description="Filtrar por ramo: vida, gmm, autos"),
+    metrica: str = Query("prima", description="Métrica a mostrar: prima, polizas, asegurados, equivalencias"),
+    tipo: Optional[str] = Query(None, description="Filtrar por tipo: NUEVA, SUBSECUENTE"),
+    top_n: int = Query(30, description="Top N agentes"),
+    db: Session = Depends(get_db)
+):
+    """Tabla dinámica Agente × Periodo — cierra GAP de Looker pág 1."""
+
+    filtro_extra = ""
+    params = {"anio": anio}
+
+    ramo_map = {"vida": 11, "gmm": 34, "autos": 90}
+    if ramo and ramo.lower() in ramo_map:
+        filtro_extra += " AND pr.ramo_codigo = :ramo_codigo"
+        params["ramo_codigo"] = ramo_map[ramo.lower()]
+
+    if tipo and tipo.upper() in ("NUEVA", "SUBSECUENTE"):
+        filtro_extra += " AND p.tipo_poliza = :tipo_poliza"
+        params["tipo_poliza"] = tipo.upper()
+
+    raw = db.execute(text(f"""
+        SELECT a.nombre_completo, a.codigo_agente, a.segmento_agrupado as segmento,
+               p.periodo_aplicacion as periodo,
+               COUNT(*) as polizas,
+               SUM(COALESCE(p.prima_neta, 0)) as prima,
+               SUM(COALESCE(p.num_asegurados, 1)) as asegurados,
+               SUM(COALESCE(p.equivalencias_emitidas, 0)) as equivalencias
+        FROM polizas p
+        LEFT JOIN productos pr ON p.producto_id = pr.id
+        LEFT JOIN agentes a ON p.agente_id = a.id
+        WHERE p.anio_aplicacion = :anio {filtro_extra}
+          AND a.nombre_completo IS NOT NULL
+        GROUP BY a.id, p.periodo_aplicacion
+        ORDER BY a.nombre_completo, p.periodo_aplicacion
+    """), params).mappings().all()
+
+    # ── Build pivot ──
+    agentes_pivot = {}
+    periodos_set = set()
+
+    for r in raw:
+        key = r["codigo_agente"]
+        per = r["periodo"] or "S/P"
+        periodos_set.add(per)
+
+        if key not in agentes_pivot:
+            agentes_pivot[key] = {
+                "nombre_completo": r["nombre_completo"],
+                "codigo_agente": r["codigo_agente"],
+                "segmento": r["segmento"],
+                "periodos": {},
+                "total_polizas": 0,
+                "total_prima": 0.0,
+                "total_asegurados": 0,
+                "total_equivalencias": 0.0,
+            }
+
+        a = agentes_pivot[key]
+        a["periodos"][per] = {
+            "polizas": r["polizas"] or 0,
+            "prima": round(r["prima"] or 0, 2),
+            "asegurados": r["asegurados"] or 0,
+            "equivalencias": round(r["equivalencias"] or 0, 1),
+        }
+        a["total_polizas"] += r["polizas"] or 0
+        a["total_prima"] += r["prima"] or 0
+        a["total_asegurados"] += r["asegurados"] or 0
+        a["total_equivalencias"] += r["equivalencias"] or 0
+
+    # ── Sort by selected metric ──
+    sort_key = f"total_{metrica}" if metrica != "prima" else "total_prima"
+    sorted_pivot = sorted(agentes_pivot.values(), key=lambda x: x.get(sort_key, 0), reverse=True)
+    if top_n > 0:
+        sorted_pivot = sorted_pivot[:top_n]
+
+    periodos_ord = sorted(periodos_set)
+
+    filas = [
+        PivotAgenteRow(
+            nombre_completo=a["nombre_completo"],
+            codigo_agente=a["codigo_agente"],
+            segmento=a["segmento"],
+            periodos=a["periodos"],
+            total_polizas=a["total_polizas"],
+            total_prima=round(a["total_prima"], 2),
+            total_asegurados=a["total_asegurados"],
+            total_equivalencias=round(a["total_equivalencias"], 1),
+        ) for a in sorted_pivot
+    ]
+
+    return PivotAgentesResponse(
+        filas=filas,
+        periodos_disponibles=periodos_ord,
+        total_agentes=len(agentes_pivot),
+        metrica=metrica,
     )
 
 
