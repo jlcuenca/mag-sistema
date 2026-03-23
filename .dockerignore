@@ -1,7 +1,6 @@
 sistema/
 ref/
 fuentes/
-scripts/
 tests/
 *.md
 *.db

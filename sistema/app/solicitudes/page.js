@@ -22,7 +22,7 @@ const fmt = (n) => {
 export default function IndicadoresSolicitudes() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [anio, setAnio] = useState(2025);
+    const [anio, setAnio] = useState(2026);
     const [ramo, setRamo] = useState('');
     const [tab, setTab] = useState('pipeline'); // pipeline, agentes, rechazos
 

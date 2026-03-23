@@ -80,6 +80,7 @@ export default function Polizas() {
                                 <option value="">Todos</option>
                                 <option value="vida">Vida Individual</option>
                                 <option value="gmm">GMM Individual</option>
+                                <option value="autos">Autos</option>
                             </select>
                         </div>
                         <div className="filter-group">
@@ -169,8 +170,8 @@ export default function Polizas() {
                                                 </div>
                                             </td>
                                             <td>
-                                                <span className={`badge ${p.ramo_codigo === 11 ? 'badge-indigo' : 'badge-emerald'}`} style={{ background: p.ramo_codigo === 11 ? 'rgba(99,102,241,0.15)' : 'rgba(16,185,129,0.15)', color: p.ramo_codigo === 11 ? '#818cf8' : '#34d399', borderRadius: 20, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>
-                                                    {p.ramo_codigo === 11 ? 'Vida' : 'GMM'}
+                                                <span className={`badge ${p.ramo_codigo === 11 ? 'badge-indigo' : p.ramo_codigo === 90 ? 'badge-blue' : 'badge-emerald'}`} style={{ background: p.ramo_codigo === 11 ? 'rgba(99,102,241,0.15)' : p.ramo_codigo === 90 ? 'rgba(59,130,246,0.15)' : 'rgba(16,185,129,0.15)', color: p.ramo_codigo === 11 ? '#818cf8' : p.ramo_codigo === 90 ? '#60a5fa' : '#34d399', borderRadius: 20, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>
+                                                    {p.ramo_codigo === 11 ? 'Vida' : p.ramo_codigo === 90 ? 'Autos' : 'GMM'}
                                                 </span>
                                             </td>
                                             <td>

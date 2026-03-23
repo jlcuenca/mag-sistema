@@ -11,6 +11,9 @@ const EMPTY_FORM = { nombre: '', rfc: '', telefono: '', email: '', domicilio: ''
 
 export default function Contratantes() {
     const [data, setData] = useState([]);
+    const [total, setTotal] = useState(0);
+    const [pages, setPages] = useState(1);
+    const [page, setPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [showModal, setShowModal] = useState(false);
@@ -20,13 +23,14 @@ export default function Contratantes() {
 
     const fetchData = () => {
         setLoading(true);
-        const p = search ? `?q=${encodeURIComponent(search)}` : '';
-        apiFetch(`/contratantes${p}`)
-            .then(d => { setData(d || []); setLoading(false); })
+        const params = new URLSearchParams({ page, limit: 50 });
+        if (search) params.set('q', search);
+        apiFetch(`/contratantes?${params}`)
+            .then(d => { setData(d.data || []); setTotal(d.total || 0); setPages(d.pages || 1); setLoading(false); })
             .catch(() => setLoading(false));
     };
 
-    useEffect(() => { fetchData(); }, [search]);
+    useEffect(() => { fetchData(); }, [search, page]);
 
     const handleSave = async () => {
         setSaving(true);
@@ -75,7 +79,7 @@ export default function Contratantes() {
                     {/* KPI Summary */}
                     <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
                         <div className="kpi-card" style={{ borderTop: '3px solid var(--accent-blue)' }}>
-                            <div className="kpi-value" style={{ color: 'var(--accent-blue)', fontSize: 26 }}>{data.length}</div>
+                            <div className="kpi-value" style={{ color: 'var(--accent-blue)', fontSize: 26 }}>{total}</div>
                             <div className="kpi-label">Total Contratantes</div>
                         </div>
                         <div className="kpi-card" style={{ borderTop: '3px solid var(--accent-emerald)' }}>
@@ -151,6 +155,13 @@ export default function Contratantes() {
                                 </tbody>
                             </table>
                         </div>
+                        {pages > 1 && (
+                            <div className="pagination">
+                                <button className="btn btn-ghost" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>← Anterior</button>
+                                <span className="pagination-info">Página {page} de {pages} • {total.toLocaleString()} contratantes</span>
+                                <button className="btn btn-ghost" onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages}>Siguiente →</button>
+                            </div>
+                        )}
                     </div>
                 </div>
 

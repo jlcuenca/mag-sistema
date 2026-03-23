@@ -136,6 +136,9 @@ class KPIs(BaseModel):
     prima_nueva_gmm_ant: float = 0
     prima_subsecuente_vida_ant: float = 0
     prima_subsecuente_gmm_ant: float = 0
+    polizas_autos_ant: int = 0
+    prima_nueva_autos_ant: float = 0
+    prima_subsecuente_autos_ant: float = 0
 
 
 class ProduccionMensual(BaseModel):

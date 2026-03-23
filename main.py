@@ -1,6 +1,6 @@
 """
 MAG Sistema — FastAPI Backend
-Promotoria MAG / AXA Seguros — Vida Individual + GMM Individual
+Promotoria MAG / AXA Seguros — Vida Individual + GMM Individual + Autos
 """
 import os
 from fastapi import FastAPI
@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=f"MAG Sistema API — {TENANT_DISPLAY_NAME}",
-    description=f"Backend FastAPI para gestión de pólizas — {TENANT_DISPLAY_NAME}",
+    description=f"Backend FastAPI para gestión de pólizas Vida, GMM y Autos — {TENANT_DISPLAY_NAME}",
     version="0.2.0",
     lifespan=lifespan,
 )

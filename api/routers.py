@@ -69,7 +69,7 @@ def get_dashboard(
     pol_ant = [p for p in polizas_all if p["anio_aplicacion"] == anio_ant]
 
     # ── KPIs (año actual) ──
-    nuevas_vida  = [p for p in polizas if p["ramo_codigo"]==11 and p["tipo_poliza"]=="NUEVA" and p["tipo_prima"]=="BASICA"]
+    nuevas_vida  = [p for p in polizas if p["ramo_codigo"]==11 and p["tipo_poliza"]=="NUEVA"]
     nuevas_gmm   = [p for p in polizas if p["ramo_codigo"]==34 and p["tipo_poliza"]=="NUEVA"]
     nuevas_autos = [p for p in polizas if p["ramo_codigo"]==90 and p["tipo_poliza"]=="NUEVA"]
     subs_vida    = [p for p in polizas if p["ramo_codigo"]==11 and p["tipo_poliza"]=="SUBSECUENTE"]
@@ -78,10 +78,12 @@ def get_dashboard(
     canceladas   = [p for p in polizas if p["status_recibo"] not in ("PAGADA", "AL CORRIENTE", None)]
 
     # KPIs año anterior
-    ant_nuevas_vida = [p for p in pol_ant if p["ramo_codigo"]==11 and p["tipo_poliza"]=="NUEVA" and p["tipo_prima"]=="BASICA"]
+    ant_nuevas_vida = [p for p in pol_ant if p["ramo_codigo"]==11 and p["tipo_poliza"]=="NUEVA"]
     ant_nuevas_gmm  = [p for p in pol_ant if p["ramo_codigo"]==34 and p["tipo_poliza"]=="NUEVA"]
+    ant_nuevas_autos = [p for p in pol_ant if p["ramo_codigo"]==90 and p["tipo_poliza"]=="NUEVA"]
     ant_subs_vida   = [p for p in pol_ant if p["ramo_codigo"]==11 and p["tipo_poliza"]=="SUBSECUENTE"]
     ant_subs_gmm    = [p for p in pol_ant if p["ramo_codigo"]==34 and p["tipo_poliza"]=="SUBSECUENTE"]
+    ant_subs_autos  = [p for p in pol_ant if p["ramo_codigo"]==90 and p["tipo_poliza"]=="SUBSECUENTE"]
 
     meta = db.execute(text("SELECT * FROM metas WHERE anio=:a AND periodo IS NULL"), {"a": anio}).mappings().first()
 
@@ -118,6 +120,9 @@ def get_dashboard(
         prima_nueva_gmm_ant   = sum(p["prima_neta"] or 0 for p in ant_nuevas_gmm),
         prima_subsecuente_vida_ant = sum(p["prima_neta"] or 0 for p in ant_subs_vida),
         prima_subsecuente_gmm_ant  = sum(p["prima_neta"] or 0 for p in ant_subs_gmm),
+        polizas_autos_ant     = len(ant_nuevas_autos),
+        prima_nueva_autos_ant = sum(p["prima_neta"] or 0 for p in ant_nuevas_autos),
+        prima_subsecuente_autos_ant = sum(p["prima_neta"] or 0 for p in ant_subs_autos),
     )
 
     # ── Producción mensual ──
@@ -188,7 +193,7 @@ def get_dashboard(
         FROM polizas p
         LEFT JOIN agentes a ON p.agente_id = a.id
         WHERE p.anio_aplicacion = :anio
-        GROUP BY a.id
+        GROUP BY a.id, a.nombre_completo, a.codigo_agente, a.oficina, a.segmento_nombre
         ORDER BY prima_total DESC
         LIMIT 10
     """), {"anio": anio}).mappings().all()
@@ -217,8 +222,8 @@ def get_dashboard(
         LEFT JOIN productos pr ON p.producto_id = pr.id
         LEFT JOIN agentes a ON p.agente_id = a.id
         WHERE p.anio_aplicacion = :anio AND pr.ramo_codigo = 34
-        GROUP BY a.id
-        HAVING polizas_nuevas > 0
+        GROUP BY a.id, a.nombre_completo, a.codigo_agente, a.oficina
+        HAVING COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) > 0
         ORDER BY asegurados DESC
         LIMIT 5
     """), {"anio": anio}).mappings().all()
@@ -237,17 +242,17 @@ def get_dashboard(
     # ── Top 5 VIDA (por equivalencias) ──
     top_vida_raw = db.execute(text("""
         SELECT a.nombre_completo, a.codigo_agente, a.oficina,
-               COUNT(CASE WHEN p.tipo_poliza='NUEVA' AND p.tipo_prima='BASICA' THEN 1 END) as polizas_nuevas,
-               SUM(CASE WHEN p.tipo_poliza='NUEVA' AND p.tipo_prima='BASICA'
+               COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) as polizas_nuevas,
+               SUM(CASE WHEN p.tipo_poliza='NUEVA'
                    THEN COALESCE(p.equivalencias_emitidas, 0) ELSE 0 END) as equivalencias,
-               SUM(CASE WHEN p.tipo_poliza='NUEVA' AND p.tipo_prima='BASICA'
+               SUM(CASE WHEN p.tipo_poliza='NUEVA'
                    THEN p.prima_neta ELSE 0 END) as prima_nueva
         FROM polizas p
         LEFT JOIN productos pr ON p.producto_id = pr.id
         LEFT JOIN agentes a ON p.agente_id = a.id
         WHERE p.anio_aplicacion = :anio AND pr.ramo_codigo = 11
-        GROUP BY a.id
-        HAVING polizas_nuevas > 0
+        GROUP BY a.id, a.nombre_completo, a.codigo_agente, a.oficina
+        HAVING COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) > 0
         ORDER BY equivalencias DESC
         LIMIT 5
     """), {"anio": anio}).mappings().all()
@@ -378,7 +383,9 @@ def get_top_agentes_ramo(
         LEFT JOIN agentes a ON p.agente_id = a.id
         WHERE p.anio_aplicacion = :anio {filtro_ramo}
           AND a.nombre_completo IS NOT NULL
-        GROUP BY a.id, p.gama, p.moneda
+        GROUP BY a.id, a.nombre_completo, a.codigo_agente, a.oficina,
+                 a.segmento_agrupado, a.gestion_comercial, a.lider_codigo,
+                 p.gama, p.moneda
     """), params).mappings().all()
 
     # ── Aggregate by agent ──
@@ -561,7 +568,7 @@ def get_pivot_agentes(
         LEFT JOIN agentes a ON p.agente_id = a.id
         WHERE p.anio_aplicacion = :anio {filtro_extra}
           AND a.nombre_completo IS NOT NULL
-        GROUP BY a.id, p.periodo_aplicacion
+        GROUP BY a.id, a.nombre_completo, a.codigo_agente, a.segmento_agrupado, p.periodo_aplicacion
         ORDER BY a.nombre_completo, p.periodo_aplicacion
     """), params).mappings().all()
 
@@ -1343,6 +1350,8 @@ def list_polizas(
         conditions.append("pr.ramo_codigo = 11")
     elif ramo == "gmm":
         conditions.append("pr.ramo_codigo = 34")
+    elif ramo == "autos":
+        conditions.append("pr.ramo_codigo = 90")
     if tipo:
         conditions.append("p.tipo_poliza = :tipo")
         params["tipo"] = tipo.upper()
@@ -2491,39 +2500,64 @@ def get_finanzas(
 router_contratantes = APIRouter(prefix="/contratantes", tags=["Contratantes"])
 
 
-@router_contratantes.get("", response_model=List[ContratanteOut])
+@router_contratantes.get("")
 def list_contratantes(
     q: Optional[str] = Query(None, description="Búsqueda por nombre/RFC"),
     agente_id: Optional[int] = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db)
 ):
-    query = db.query(Contratante)
-    if q:
-        query = query.filter(
-            (Contratante.nombre.ilike(f"%{q}%")) |
-            (Contratante.rfc.ilike(f"%{q}%"))
-        )
-    if agente_id:
-        query = query.filter(Contratante.agente_id == agente_id)
-    contratantes = query.order_by(Contratante.nombre).all()
+    conditions = ["1=1"]
+    params: dict = {}
 
-    result = []
-    for c in contratantes:
-        pols = db.query(Poliza).filter(Poliza.contratante_id == c.id).all()
-        ref_nombre = None
-        if c.referido_por_id:
-            ref = db.query(Contratante).get(c.referido_por_id)
-            ref_nombre = ref.nombre if ref else None
-        result.append(ContratanteOut(
-            id=c.id, nombre=c.nombre, rfc=c.rfc, telefono=c.telefono,
-            email=c.email, domicilio=c.domicilio, notas=c.notas,
-            referido_por_id=c.referido_por_id, agente_id=c.agente_id,
-            num_polizas=len(pols),
-            prima_total=sum(p.prima_neta or 0 for p in pols),
-            referido_por_nombre=ref_nombre,
-            created_at=c.created_at,
-        ))
-    return result
+    if q:
+        conditions.append("(c.nombre ILIKE :q OR c.rfc ILIKE :q)")
+        params["q"] = f"%{q}%"
+    if agente_id:
+        conditions.append("c.agente_id = :agente_id")
+        params["agente_id"] = agente_id
+
+    where = " AND ".join(conditions)
+
+    # Total count
+    total = db.execute(text(f"""
+        SELECT COUNT(*) FROM contratantes c WHERE {where}
+    """), params).scalar() or 0
+
+    offset = (page - 1) * limit
+    params["limit"] = limit
+    params["offset"] = offset
+
+    rows = db.execute(text(f"""
+        SELECT c.id, c.nombre, c.rfc, c.telefono, c.email, c.domicilio,
+               c.notas, c.referido_por_id, c.agente_id, c.created_at,
+               COUNT(p.id) as num_polizas,
+               COALESCE(SUM(p.prima_neta), 0) as prima_total
+        FROM contratantes c
+        LEFT JOIN polizas p ON p.contratante_id = c.id
+        WHERE {where}
+        GROUP BY c.id, c.nombre, c.rfc, c.telefono, c.email, c.domicilio,
+                 c.notas, c.referido_por_id, c.agente_id, c.created_at
+        ORDER BY c.nombre
+        LIMIT :limit OFFSET :offset
+    """), params).mappings().all()
+
+    data = []
+    for r in rows:
+        data.append({
+            "id": r["id"], "nombre": r["nombre"], "rfc": r["rfc"],
+            "telefono": r["telefono"], "email": r["email"],
+            "domicilio": r["domicilio"], "notas": r["notas"],
+            "referido_por_id": r["referido_por_id"],
+            "agente_id": r["agente_id"],
+            "num_polizas": r["num_polizas"],
+            "prima_total": float(r["prima_total"]),
+            "referido_por_nombre": None,
+            "created_at": r["created_at"],
+        })
+
+    return {"data": data, "total": total, "page": page, "pages": max(1, -(-total // limit))}
 
 
 @router_contratantes.post("", response_model=ContratanteOut, status_code=201)

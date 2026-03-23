@@ -127,7 +127,7 @@ export default function Dashboard() {
     const [data, setData] = useState(null);
     const [anio, setAnio] = useState(2025);
     const [loading, setLoading] = useState(true);
-    const [ramoFilter, setRamoFilter] = useState('todos'); // todos | vida | gmm
+    const [ramoFilter, setRamoFilter] = useState('todos'); // todos | vida | gmm | autos
 
     useEffect(() => {
         setLoading(true);
@@ -162,6 +162,15 @@ export default function Dashboard() {
         { label: 'Asegurados Nuevos GMM', value: k.asegurados_nuevos_gmm || 0, meta: null, icon: '👥', color: 'cyan', sub: 'Primer año' },
         { label: 'Prima Nueva GMM', value: fmt(k.prima_nueva_gmm || 0), meta: null, icon: '💵', color: 'emerald', sub: `Meta: ${fmt(k.meta_prima_gmm || 0)}` },
         { label: 'Prima Subsec. GMM', value: fmt(k.prima_subsecuente_gmm || 0), meta: null, icon: '💵', color: 'amber', sub: 'Renovaciones' },
+        { label: 'Prima Total GMM', value: fmt((k.prima_nueva_gmm || 0) + (k.prima_subsecuente_gmm || 0)), meta: null, icon: '💎', color: 'cyan', sub: 'Nueva + Renovaciones' },
+    ];
+
+    /* ── KPI cards for AUTOS row ─────────────────────────────── */
+    const autosCards = [
+        { label: 'Pólizas Nuevas Autos', value: k.polizas_nuevas_autos || 0, meta: null, icon: '🚗', color: 'blue', sub: 'Primer año' },
+        { label: 'Prima Nueva Autos', value: fmt(k.prima_nueva_autos || 0), meta: null, icon: '💰', color: 'blue', sub: 'Primer año' },
+        { label: 'Prima Subsec. Autos', value: fmt(k.prima_subsecuente_autos || 0), meta: null, icon: '💵', color: 'amber', sub: 'Renovaciones' },
+        { label: 'Prima Total Autos', value: fmt((k.prima_nueva_autos || 0) + (k.prima_subsecuente_autos || 0)), meta: null, icon: '💎', color: 'cyan', sub: 'Nueva + Renovaciones' },
     ];
 
     /* ── Año Anterior Data ──────────────────────────────────── */
@@ -176,6 +185,11 @@ export default function Dashboard() {
         { label: 'Asegurados', value: k.asegurados_gmm_ant || 0 },
         { label: 'Prima Nueva', value: fmt(k.prima_nueva_gmm_ant || 0) },
         { label: 'Prima Subsec.', value: fmt(k.prima_subsecuente_gmm_ant || 0) },
+    ];
+    const autosAnt = [
+        { label: 'Pólizas', value: k.polizas_autos_ant || 0 },
+        { label: 'Prima Nueva', value: fmt(k.prima_nueva_autos_ant || 0) },
+        { label: 'Prima Subsec.', value: fmt(k.prima_subsecuente_autos_ant || 0) },
     ];
 
     return (
@@ -228,6 +242,16 @@ export default function Dashboard() {
                                     ))}
                                 </div>
                                 <AntPanel items={gmmAnt} />
+                            </div>
+
+                            {/* ═══════ AUTOS ROW ═══════ */}
+                            <div style={{ display: 'flex', gap: 16, marginBottom: 28, alignItems: 'stretch' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${autosCards.length}, 1fr)`, gap: 14, flex: 1 }}>
+                                    {autosCards.map((kpi, i) => (
+                                        <KpiCard key={i} {...kpi} />
+                                    ))}
+                                </div>
+                                <AntPanel items={autosAnt} />
                             </div>
 
                             {/* ═══════ TOP 5 RANKINGS ═══════ */}
@@ -348,6 +372,7 @@ export default function Dashboard() {
                                             { key: 'todos', label: 'Todos', icon: '📊' },
                                             { key: 'vida', label: 'Vida', icon: '🛡️' },
                                             { key: 'gmm', label: 'GMM', icon: '🏥' },
+                                            { key: 'autos', label: 'Autos', icon: '🚗' },
                                         ].map(f => (
                                             <button key={f.key}
                                                 onClick={() => setRamoFilter(f.key)}
@@ -374,26 +399,30 @@ export default function Dashboard() {
                                         <div style={{ flex: 1 }}>
                                             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>AVANCE VS PRESUPUESTO</div>
                                             <div className="progress-bar" style={{ height: 8 }}>
-                                                <div className={`progress-fill progress-${ramoFilter === 'vida' ? 'indigo' : 'emerald'}`}
-                                                    style={{ width: `${ramoFilter === 'vida' ? pct(k.polizas_nuevas_vida, k.meta_vida) : pct(k.polizas_nuevas_gmm, k.meta_gmm)}%` }} />
+                                                <div className={`progress-fill progress-${ramoFilter === 'vida' ? 'indigo' : ramoFilter === 'gmm' ? 'emerald' : 'blue'}`}
+                                                    style={{ width: `${ramoFilter === 'vida' ? pct(k.polizas_nuevas_vida, k.meta_vida) : ramoFilter === 'gmm' ? pct(k.polizas_nuevas_gmm, k.meta_gmm) : pct(k.polizas_nuevas_autos, k.meta_autos)}%` }} />
                                             </div>
                                             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
                                                 {ramoFilter === 'vida'
                                                     ? `${k.polizas_nuevas_vida} / ${k.meta_vida} pólizas (${pct(k.polizas_nuevas_vida, k.meta_vida)}%)`
-                                                    : `${k.polizas_nuevas_gmm} / ${k.meta_gmm} pólizas (${pct(k.polizas_nuevas_gmm, k.meta_gmm)}%)`
+                                                    : ramoFilter === 'gmm'
+                                                    ? `${k.polizas_nuevas_gmm} / ${k.meta_gmm} pólizas (${pct(k.polizas_nuevas_gmm, k.meta_gmm)}%)`
+                                                    : `${k.polizas_nuevas_autos || 0} pólizas nuevas autos`
                                                 }
                                             </div>
                                         </div>
                                         <div style={{ flex: 1 }}>
                                             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>PRIMA VS META</div>
                                             <div className="progress-bar" style={{ height: 8 }}>
-                                                <div className={`progress-fill progress-${ramoFilter === 'vida' ? 'indigo' : 'emerald'}`}
-                                                    style={{ width: `${ramoFilter === 'vida' ? pct(k.prima_nueva_vida, k.meta_prima_vida) : pct(k.prima_nueva_gmm, k.meta_prima_gmm)}%` }} />
+                                                <div className={`progress-fill progress-${ramoFilter === 'vida' ? 'indigo' : ramoFilter === 'gmm' ? 'emerald' : 'blue'}`}
+                                                    style={{ width: `${ramoFilter === 'vida' ? pct(k.prima_nueva_vida, k.meta_prima_vida) : ramoFilter === 'gmm' ? pct(k.prima_nueva_gmm, k.meta_prima_gmm) : pct(k.prima_nueva_autos, k.meta_prima_autos)}%` }} />
                                             </div>
                                             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
                                                 {ramoFilter === 'vida'
                                                     ? `${fmt(k.prima_nueva_vida)} / ${fmt(k.meta_prima_vida)} (${pct(k.prima_nueva_vida, k.meta_prima_vida)}%)`
-                                                    : `${fmt(k.prima_nueva_gmm)} / ${fmt(k.meta_prima_gmm)} (${pct(k.prima_nueva_gmm, k.meta_prima_gmm)}%)`
+                                                    : ramoFilter === 'gmm'
+                                                    ? `${fmt(k.prima_nueva_gmm)} / ${fmt(k.meta_prima_gmm)} (${pct(k.prima_nueva_gmm, k.meta_prima_gmm)}%)`
+                                                    : `${fmt(k.prima_nueva_autos || 0)} prima nueva autos`
                                                 }
                                             </div>
                                         </div>
