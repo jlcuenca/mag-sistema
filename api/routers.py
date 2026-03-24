@@ -40,6 +40,120 @@ from .rules import (
 )
 
 # ═══════════════════════════════════════════════════════════════════
+# HELPER: Auto-cálculo de Metas (15% sobre año anterior + recovery)
+# ═══════════════════════════════════════════════════════════════════
+FACTOR_CRECIMIENTO = 1.15  # Meta base = año anterior × 1.15
+FACTOR_RECUPERACION = 0.20  # Si bajó: +20% de la diferencia como recovery
+
+
+def _calcular_meta_prima(prima_ant: float, prima_2yr: float) -> float:
+    """
+    Calcula la meta de prima con factor de recuperación.
+    - Base: prima_ant × 1.15
+    - Si bajó (prima_2yr > prima_ant): + (prima_2yr - prima_ant) × 0.20
+    """
+    meta = prima_ant * FACTOR_CRECIMIENTO
+    if prima_2yr > prima_ant:
+        diferencia = prima_2yr - prima_ant
+        meta += diferencia * FACTOR_RECUPERACION
+    return meta
+
+
+def calcular_metas_auto(db: Session, anio: int):
+    """
+    Calcula metas automáticas basadas en la producción del año anterior.
+    - Meta = venta del mismo mes del año anterior × 1.15
+    - Si la venta del año -2 fue mayor (bajó), suma 20% de la diferencia.
+    Retorna dict con metas anuales y mensuales por ramo.
+    """
+    anio_ant = anio - 1
+    anio_2yr = anio - 2
+
+    # Traer producción de los 2 años anteriores
+    rows = db.execute(text("""
+        SELECT pr.ramo_codigo, p.anio_aplicacion as anio_prod,
+               CAST(SUBSTR(p.periodo_aplicacion, 6, 2) AS INTEGER) as mes,
+               COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) as polizas_nuevas,
+               SUM(COALESCE(p.equivalencias_emitidas, 0)) as equivalencias,
+               SUM(COALESCE(p.num_asegurados, 1)) as asegurados,
+               SUM(COALESCE(p.prima_neta, 0)) as prima_total
+        FROM polizas p
+        LEFT JOIN productos pr ON p.producto_id = pr.id
+        WHERE p.anio_aplicacion IN (:anio_ant, :anio_2yr)
+          AND p.periodo_aplicacion IS NOT NULL
+        GROUP BY pr.ramo_codigo, p.anio_aplicacion,
+                 CAST(SUBSTR(p.periodo_aplicacion, 6, 2) AS INTEGER)
+    """), {"anio_ant": anio_ant, "anio_2yr": anio_2yr}).mappings().all()
+
+    # Organizar por ramo/mes/año
+    datos = {}  # {ramo_key: {mes: {anio: prima}}}
+    for r in rows:
+        ramo = int(r["ramo_codigo"]) if r["ramo_codigo"] else 0
+        mes = int(r["mes"]) if r["mes"] else 0
+        anio_prod = int(r["anio_prod"]) if r["anio_prod"] else 0
+        if mes == 0:
+            continue
+
+        ramo_key = {11: "VIDA", 34: "GMM", 90: "AUTOS"}.get(ramo, "OTRO")
+        if ramo_key not in datos:
+            datos[ramo_key] = {}
+        if mes not in datos[ramo_key]:
+            datos[ramo_key][mes] = {}
+        datos[ramo_key][mes][anio_prod] = {
+            "polizas": int(r["polizas_nuevas"] or 0),
+            "equivalencias": float(r["equivalencias"] or 0),
+            "asegurados": int(r["asegurados"] or 0),
+            "prima": float(r["prima_total"] or 0),
+        }
+
+    # Calcular metas con factor de recuperación
+    metas = {"mensual": {}, "anual": {}}
+    for ramo_key, meses in datos.items():
+        if ramo_key not in metas["anual"]:
+            metas["anual"][ramo_key] = {"polizas": 0, "equivalencias": 0, "asegurados": 0, "prima": 0}
+
+        for mes, anios in meses.items():
+            ant = anios.get(anio_ant, {})
+            dos_yr = anios.get(anio_2yr, {})
+            prima_ant = ant.get("prima", 0)
+            prima_2yr = dos_yr.get("prima", 0)
+
+            meta_prima = _calcular_meta_prima(prima_ant, prima_2yr)
+
+            key = f"{ramo_key}_{mes}"
+            metas["mensual"][key] = {
+                "polizas": int(ant.get("polizas", 0)),
+                "equivalencias": float(ant.get("equivalencias", 0)),
+                "asegurados": int(ant.get("asegurados", 0)),
+                "prima": meta_prima,
+                "prima_ant": prima_ant,
+                "prima_2yr": prima_2yr,
+                "tiene_recovery": prima_2yr > prima_ant,
+            }
+
+            # Acumular anual
+            metas["anual"][ramo_key]["polizas"] += int(ant.get("polizas", 0))
+            metas["anual"][ramo_key]["equivalencias"] += float(ant.get("equivalencias", 0))
+            metas["anual"][ramo_key]["asegurados"] += int(ant.get("asegurados", 0))
+            metas["anual"][ramo_key]["prima"] += meta_prima
+
+    return metas
+
+
+def get_meta_mes(metas_auto: dict, ramo: str, mes: int) -> float:
+    """Obtiene la meta de prima para un ramo y mes específico."""
+    key = f"{ramo}_{mes}"
+    entry = metas_auto.get("mensual", {}).get(key)
+    return entry["prima"] if entry else 0
+
+
+def get_meta_anual(metas_auto: dict, ramo: str) -> float:
+    """Obtiene la meta anual de prima para un ramo."""
+    entry = metas_auto.get("anual", {}).get(ramo)
+    return entry["prima"] if entry else 0
+
+
+# ═══════════════════════════════════════════════════════════════════
 # DASHBOARD
 # ═══════════════════════════════════════════════════════════════════
 router_dashboard = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -87,9 +201,28 @@ def get_dashboard(
 
     meta = db.execute(text("SELECT * FROM metas WHERE anio=:a AND periodo IS NULL"), {"a": anio}).mappings().first()
 
+    # Auto-cálculo de metas si no hay datos manuales
+    metas_auto = None
+    if not meta:
+        metas_auto = calcular_metas_auto(db, anio)
+
     prima_nueva_vida_val = sum(p["prima_neta"] or 0 for p in nuevas_vida)
     prima_sub_vida_val   = sum(p["prima_neta"] or 0 for p in subs_vida)
     equiv_vida_val       = sum(p["equivalencias_emitidas"] or 0 for p in nuevas_vida)
+
+    # Metas: manual si existe, auto-calculado si no
+    if meta:
+        mv = meta["meta_polizas_vida"] or 0
+        mg = meta["meta_polizas_gmm"] or 0
+        mpv = meta["meta_prima_vida"] or 0
+        mpg = meta["meta_prima_gmm"] or 0
+    else:
+        vida_anual = metas_auto["anual"].get("VIDA", {}) if metas_auto else {}
+        gmm_anual = metas_auto["anual"].get("GMM", {}) if metas_auto else {}
+        mv = int(vida_anual.get("polizas", 0) * FACTOR_CRECIMIENTO) if vida_anual else 0
+        mg = int(gmm_anual.get("polizas", 0) * FACTOR_CRECIMIENTO) if gmm_anual else 0
+        mpv = round(vida_anual.get("prima", 0), 2)
+        mpg = round(gmm_anual.get("prima", 0), 2)
 
     kpis = KPIs(
         polizas_nuevas_vida   = len(nuevas_vida),
@@ -106,10 +239,10 @@ def get_dashboard(
         prima_subsecuente_autos= sum(p["prima_neta"] or 0 for p in subs_autos),
         polizas_canceladas    = len(canceladas),
         total_polizas         = len(polizas),
-        meta_vida             = meta["meta_polizas_vida"] if meta else 0,
-        meta_gmm              = meta["meta_polizas_gmm"] if meta else 0,
-        meta_prima_vida       = meta["meta_prima_vida"] if meta else 0,
-        meta_prima_gmm        = meta["meta_prima_gmm"] if meta else 0,
+        meta_vida             = mv,
+        meta_gmm              = mg,
+        meta_prima_vida       = mpv,
+        meta_prima_gmm        = mpg,
         # Año anterior
         polizas_vida_ant      = len(ant_nuevas_vida),
         equivalencias_vida_ant= round(sum(p["equivalencias_emitidas"] or 0 for p in ant_nuevas_vida), 1),
@@ -880,12 +1013,19 @@ def get_dashboard_ejecutivo(
         autos_total_ant = a["autos_prima_nueva_ant"] + a["autos_prima_sub_ant"]
         autos_total_act = a["autos_prima_nueva_act"] + a["autos_prima_sub_act"]
 
-        # Metas
+        # Metas: manual o auto-calculada (15% sobre año anterior del agente)
         meta = metas_by_agente.get(a["clave"])
-        meta_pol = (meta["meta_polizas_vida"] or 0) if meta else 0
-        meta_eq = 0
-        meta_pv = (meta["meta_prima_vida"] or 0) if meta else 0
-        meta_pg = (meta["meta_prima_gmm"] or 0) if meta else 0
+        if meta:
+            meta_pol = (meta["meta_polizas_vida"] or 0)
+            meta_eq = 0
+            meta_pv = (meta["meta_prima_vida"] or 0)
+            meta_pg = (meta["meta_prima_gmm"] or 0)
+        else:
+            # Auto: meta = año anterior × 1.15
+            meta_pol = int(a.get("vida_polizas_ant", 0) * FACTOR_CRECIMIENTO)
+            meta_eq = round(a.get("vida_equiv_ant", 0) * FACTOR_CRECIMIENTO, 1)
+            meta_pv = round((a.get("vida_total_ant", 0) or (a.get("vida_prima_nueva_ant", 0) + a.get("vida_prima_sub_ant", 0))) * FACTOR_CRECIMIENTO, 2)
+            meta_pg = round((a.get("gmm_total_ant", 0) or (a.get("gmm_prima_nueva_ant", 0) + a.get("gmm_prima_sub_ant", 0))) * FACTOR_CRECIMIENTO, 2)
 
         agentes_operativo.append(AgenteOperativo(
             clave=a["clave"], nombre=a["nombre"],
@@ -2376,7 +2516,26 @@ def get_finanzas(
         elif "GMM" in ramo_u:
             meta_row = meta_row.filter(Presupuesto.ramo == "GMM")
     meta_rows = meta_row.all()
-    meta_anual = sum(m.meta_prima_total or 0 for m in meta_rows) if meta_rows else proyeccion_anual
+    # Meta anual: tabla presupuestos si tiene datos, sino auto-cálculo
+    if meta_rows:
+        meta_anual = sum(m.meta_prima_total or 0 for m in meta_rows)
+    else:
+        # Auto: 15% sobre año anterior
+        metas_auto_fin = calcular_metas_auto(db, anio)
+        if ramo:
+            ramo_u = ramo.upper()
+            if "VIDA" in ramo_u:
+                meta_anual = get_meta_anual(metas_auto_fin, "VIDA")
+            elif "GMM" in ramo_u:
+                meta_anual = get_meta_anual(metas_auto_fin, "GMM")
+            elif "AUTO" in ramo_u:
+                meta_anual = get_meta_anual(metas_auto_fin, "AUTOS")
+            else:
+                meta_anual = sum(v["prima"] for v in metas_auto_fin.get("anual", {}).values())
+        else:
+            meta_anual = sum(v["prima"] for v in metas_auto_fin.get("anual", {}).values())
+        if meta_anual == 0:
+            meta_anual = proyeccion_anual
 
     var_vs_meta = round((proyeccion_anual - meta_anual) / meta_anual * 100, 1) if meta_anual > 0 else 0
 
@@ -2395,6 +2554,11 @@ def get_finanzas(
     presupuesto_comp = []
     acum_meta = 0
     acum_real = 0
+    # Pre-calcular metas auto si no hay presupuestos manuales
+    if not meta_rows:
+        if not metas_auto_fin:
+            metas_auto_fin = calcular_metas_auto(db, anio)
+
     for m in range(1, 13):
         periodo_str = f"{anio}-{m:02d}"
         pres_rows = db.query(Presupuesto).filter(
@@ -2408,7 +2572,25 @@ def get_finanzas(
             elif "GMM" in ramo_u:
                 pres_rows = pres_rows.filter(Presupuesto.ramo == "GMM")
         pres_list = pres_rows.all()
-        meta_mes = sum(p.meta_prima_total or 0 for p in pres_list) if pres_list else meta_anual / 12
+
+        if pres_list:
+            meta_mes = sum(p.meta_prima_total or 0 for p in pres_list)
+        elif not meta_rows and metas_auto_fin:
+            # Auto: meta del mes = venta año anterior mismo mes × 1.15
+            if ramo:
+                ramo_u = ramo.upper()
+                if "VIDA" in ramo_u:
+                    meta_mes = get_meta_mes(metas_auto_fin, "VIDA", m)
+                elif "GMM" in ramo_u:
+                    meta_mes = get_meta_mes(metas_auto_fin, "GMM", m)
+                elif "AUTO" in ramo_u:
+                    meta_mes = get_meta_mes(metas_auto_fin, "AUTOS", m)
+                else:
+                    meta_mes = sum(get_meta_mes(metas_auto_fin, r, m) for r in ["VIDA", "GMM", "AUTOS"])
+            else:
+                meta_mes = sum(get_meta_mes(metas_auto_fin, r, m) for r in ["VIDA", "GMM", "AUTOS"])
+        else:
+            meta_mes = meta_anual / 12
         real_mes = meses_data[m]["prima_cobrada"]
 
         acum_meta += meta_mes
