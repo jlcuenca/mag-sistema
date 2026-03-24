@@ -516,7 +516,7 @@ def get_top_agentes_ramo(
         filtro_ramo += " AND p.flag_nueva_formal = 1"
 
     # ── Query ──
-    raw = db.execute(text(f"""
+    sql = """
         SELECT a.nombre_completo, a.codigo_agente, a.oficina,
                a.segmento_agrupado as segmento, a.gestion_comercial as gestion,
                a.lider_codigo,
@@ -537,12 +537,13 @@ def get_top_agentes_ramo(
         FROM polizas p
         LEFT JOIN productos pr ON p.producto_id = pr.id
         LEFT JOIN agentes a ON p.agente_id = a.id
-        WHERE p.anio_aplicacion = :anio {filtro_ramo}
+        WHERE p.anio_aplicacion = :anio """ + filtro_ramo + """
           AND a.nombre_completo IS NOT NULL
         GROUP BY a.id, a.nombre_completo, a.codigo_agente, a.oficina,
                  a.segmento_agrupado, a.gestion_comercial, a.lider_codigo,
                  p.gama, p.moneda
-    """), params).mappings().all()
+    """
+    raw = db.execute(text(sql), params).mappings().all()
 
     # ── Aggregate by agent ──
     agents = {}
@@ -1615,17 +1616,18 @@ def list_agentes(
     where = "WHERE a.situacion = :s" if situacion and situacion != "TODOS" else ""
     params = {"s": situacion} if situacion and situacion != "TODOS" else {}
 
-    rows = db.execute(text(f"""
+    sql = """
         SELECT a.*,
                COUNT(p.id) as total_polizas,
                SUM(CASE WHEN """ + SQL_ES_NUEVA + """ AND p.anio_aplicacion=2025 THEN 1 ELSE 0 END) as polizas_nuevas_2025,
                SUM(CASE WHEN """ + SQL_ES_NUEVA + """ AND p.anio_aplicacion=2025 THEN p.prima_neta ELSE 0 END) as prima_nueva_2025
         FROM agentes a
         LEFT JOIN polizas p ON p.agente_id = a.id
-        {where}
+        """ + where + """
         GROUP BY a.id
         ORDER BY prima_nueva_2025 DESC
-    """), params).mappings().all()
+    """
+    rows = db.execute(text(sql), params).mappings().all()
 
     return {"data": [dict(r) for r in rows]}
 
