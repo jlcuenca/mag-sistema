@@ -42,24 +42,24 @@ from .rules import (
 # ═══════════════════════════════════════════════════════════════════
 # HELPER: Detección de póliza NUEVA vs SUBSECUENTE
 # ═══════════════════════════════════════════════════════════════════
-# tipo_poliza está NULL en datos CSV. Usamos flag_nueva_formal como fallback.
+# flag_nueva_formal (reglas de negocio) tiene prioridad sobre tipo_poliza (dato crudo de importación)
 # SQL: usar estas expresiones en CASE WHEN para filtrar nueva/subsecuente
-SQL_ES_NUEVA = "(p.tipo_poliza='NUEVA' OR (p.tipo_poliza IS NULL AND p.flag_nueva_formal=1))"
-SQL_ES_SUBSECUENTE = "(p.tipo_poliza='SUBSECUENTE' OR (p.tipo_poliza IS NULL AND COALESCE(p.flag_nueva_formal,0)=0))"
+SQL_ES_NUEVA = "(p.flag_nueva_formal=1 OR (p.flag_nueva_formal IS NULL AND p.tipo_poliza='NUEVA'))"
+SQL_ES_SUBSECUENTE = "(COALESCE(p.flag_nueva_formal,0)=0 OR (p.flag_nueva_formal IS NULL AND p.tipo_poliza='SUBSECUENTE'))"
 
 
 def _es_nueva(p) -> bool:
-    """Determina si una póliza es NUEVA usando tipo_poliza o flag_nueva_formal."""
-    if p.get("tipo_poliza"):
-        return p["tipo_poliza"] == "NUEVA"
-    return p.get("flag_nueva_formal") == 1
+    """Determina si una póliza es NUEVA. flag_nueva_formal tiene prioridad."""
+    if p.get("flag_nueva_formal") is not None:
+        return p["flag_nueva_formal"] == 1
+    return p.get("tipo_poliza") == "NUEVA"
 
 
 def _es_subsecuente(p) -> bool:
-    """Determina si una póliza es SUBSECUENTE."""
-    if p.get("tipo_poliza"):
-        return p["tipo_poliza"] == "SUBSECUENTE"
-    return p.get("flag_nueva_formal", 0) == 0
+    """Determina si una póliza es SUBSECUENTE. flag_nueva_formal tiene prioridad."""
+    if p.get("flag_nueva_formal") is not None:
+        return p["flag_nueva_formal"] == 0
+    return p.get("tipo_poliza") == "SUBSECUENTE"
 
 
 # ═══════════════════════════════════════════════════════════════════
