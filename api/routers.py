@@ -40,6 +40,29 @@ from .rules import (
 )
 
 # ═══════════════════════════════════════════════════════════════════
+# HELPER: Detección de póliza NUEVA vs SUBSECUENTE
+# ═══════════════════════════════════════════════════════════════════
+# tipo_poliza está NULL en datos CSV. Usamos flag_nueva_formal como fallback.
+# SQL: usar estas expresiones en CASE WHEN para filtrar nueva/subsecuente
+SQL_ES_NUEVA = "(p.tipo_poliza='NUEVA' OR (p.tipo_poliza IS NULL AND p.flag_nueva_formal=1))"
+SQL_ES_SUBSECUENTE = "(p.tipo_poliza='SUBSECUENTE' OR (p.tipo_poliza IS NULL AND COALESCE(p.flag_nueva_formal,0)=0))"
+
+
+def _es_nueva(p) -> bool:
+    """Determina si una póliza es NUEVA usando tipo_poliza o flag_nueva_formal."""
+    if p.get("tipo_poliza"):
+        return p["tipo_poliza"] == "NUEVA"
+    return p.get("flag_nueva_formal") == 1
+
+
+def _es_subsecuente(p) -> bool:
+    """Determina si una póliza es SUBSECUENTE."""
+    if p.get("tipo_poliza"):
+        return p["tipo_poliza"] == "SUBSECUENTE"
+    return p.get("flag_nueva_formal", 0) == 0
+
+
+# ═══════════════════════════════════════════════════════════════════
 # HELPER: Auto-cálculo de Metas (15% sobre año anterior + recovery)
 # ═══════════════════════════════════════════════════════════════════
 FACTOR_CRECIMIENTO = 1.15  # Meta base = año anterior × 1.15
@@ -73,7 +96,7 @@ def calcular_metas_auto(db: Session, anio: int):
     rows = db.execute(text("""
         SELECT pr.ramo_codigo, p.anio_aplicacion as anio_prod,
                CAST(SUBSTR(p.periodo_aplicacion, 6, 2) AS INTEGER) as mes,
-               COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) as polizas_nuevas,
+               COUNT(CASE WHEN """ + SQL_ES_NUEVA + """ THEN 1 END) as polizas_nuevas,
                SUM(COALESCE(p.equivalencias_emitidas, 0)) as equivalencias,
                SUM(COALESCE(p.num_asegurados, 1)) as asegurados,
                SUM(COALESCE(p.prima_neta, 0)) as prima_total
@@ -183,21 +206,21 @@ def get_dashboard(
     pol_ant = [p for p in polizas_all if p["anio_aplicacion"] == anio_ant]
 
     # ── KPIs (año actual) ──
-    nuevas_vida  = [p for p in polizas if p["ramo_codigo"]==11 and p["tipo_poliza"]=="NUEVA"]
-    nuevas_gmm   = [p for p in polizas if p["ramo_codigo"]==34 and p["tipo_poliza"]=="NUEVA"]
-    nuevas_autos = [p for p in polizas if p["ramo_codigo"]==90 and p["tipo_poliza"]=="NUEVA"]
-    subs_vida    = [p for p in polizas if p["ramo_codigo"]==11 and p["tipo_poliza"]=="SUBSECUENTE"]
-    subs_gmm     = [p for p in polizas if p["ramo_codigo"]==34 and p["tipo_poliza"]=="SUBSECUENTE"]
-    subs_autos   = [p for p in polizas if p["ramo_codigo"]==90 and p["tipo_poliza"]=="SUBSECUENTE"]
+    nuevas_vida  = [p for p in polizas if p["ramo_codigo"]==11 and _es_nueva(p)]
+    nuevas_gmm   = [p for p in polizas if p["ramo_codigo"]==34 and _es_nueva(p)]
+    nuevas_autos = [p for p in polizas if p["ramo_codigo"]==90 and _es_nueva(p)]
+    subs_vida    = [p for p in polizas if p["ramo_codigo"]==11 and _es_subsecuente(p)]
+    subs_gmm     = [p for p in polizas if p["ramo_codigo"]==34 and _es_subsecuente(p)]
+    subs_autos   = [p for p in polizas if p["ramo_codigo"]==90 and _es_subsecuente(p)]
     canceladas   = [p for p in polizas if p["status_recibo"] not in ("PAGADA", "AL CORRIENTE", None)]
 
     # KPIs año anterior
-    ant_nuevas_vida = [p for p in pol_ant if p["ramo_codigo"]==11 and p["tipo_poliza"]=="NUEVA"]
-    ant_nuevas_gmm  = [p for p in pol_ant if p["ramo_codigo"]==34 and p["tipo_poliza"]=="NUEVA"]
-    ant_nuevas_autos = [p for p in pol_ant if p["ramo_codigo"]==90 and p["tipo_poliza"]=="NUEVA"]
-    ant_subs_vida   = [p for p in pol_ant if p["ramo_codigo"]==11 and p["tipo_poliza"]=="SUBSECUENTE"]
-    ant_subs_gmm    = [p for p in pol_ant if p["ramo_codigo"]==34 and p["tipo_poliza"]=="SUBSECUENTE"]
-    ant_subs_autos  = [p for p in pol_ant if p["ramo_codigo"]==90 and p["tipo_poliza"]=="SUBSECUENTE"]
+    ant_nuevas_vida = [p for p in pol_ant if p["ramo_codigo"]==11 and _es_nueva(p)]
+    ant_nuevas_gmm  = [p for p in pol_ant if p["ramo_codigo"]==34 and _es_nueva(p)]
+    ant_nuevas_autos = [p for p in pol_ant if p["ramo_codigo"]==90 and _es_nueva(p)]
+    ant_subs_vida   = [p for p in pol_ant if p["ramo_codigo"]==11 and _es_subsecuente(p)]
+    ant_subs_gmm    = [p for p in pol_ant if p["ramo_codigo"]==34 and _es_subsecuente(p)]
+    ant_subs_autos  = [p for p in pol_ant if p["ramo_codigo"]==90 and _es_subsecuente(p)]
 
     meta = db.execute(text("SELECT * FROM metas WHERE anio=:a AND periodo IS NULL"), {"a": anio}).mappings().first()
 
@@ -261,12 +284,12 @@ def get_dashboard(
     # ── Producción mensual ──
     mensual_raw = db.execute(text("""
         SELECT p.periodo_aplicacion as periodo,
-               SUM(CASE WHEN pr.ramo_codigo=11 AND p.tipo_poliza='NUEVA' THEN 1 ELSE 0 END) as polizas_vida,
-               SUM(CASE WHEN pr.ramo_codigo=34 AND p.tipo_poliza='NUEVA' THEN 1 ELSE 0 END) as polizas_gmm,
-               SUM(CASE WHEN pr.ramo_codigo=90 AND p.tipo_poliza='NUEVA' THEN 1 ELSE 0 END) as polizas_autos,
-               SUM(CASE WHEN pr.ramo_codigo=11 AND p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_vida,
-               SUM(CASE WHEN pr.ramo_codigo=34 AND p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_gmm,
-               SUM(CASE WHEN pr.ramo_codigo=90 AND p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_autos
+               SUM(CASE WHEN pr.ramo_codigo=11 AND """ + SQL_ES_NUEVA + """ THEN 1 ELSE 0 END) as polizas_vida,
+               SUM(CASE WHEN pr.ramo_codigo=34 AND """ + SQL_ES_NUEVA + """ THEN 1 ELSE 0 END) as polizas_gmm,
+               SUM(CASE WHEN pr.ramo_codigo=90 AND """ + SQL_ES_NUEVA + """ THEN 1 ELSE 0 END) as polizas_autos,
+               SUM(CASE WHEN pr.ramo_codigo=11 AND """ + SQL_ES_NUEVA + """ THEN p.prima_neta ELSE 0 END) as prima_vida,
+               SUM(CASE WHEN pr.ramo_codigo=34 AND """ + SQL_ES_NUEVA + """ THEN p.prima_neta ELSE 0 END) as prima_gmm,
+               SUM(CASE WHEN pr.ramo_codigo=90 AND """ + SQL_ES_NUEVA + """ THEN p.prima_neta ELSE 0 END) as prima_autos
         FROM polizas p
         LEFT JOIN productos pr ON p.producto_id = pr.id
         WHERE p.anio_aplicacion = :anio
@@ -289,12 +312,12 @@ def get_dashboard(
     # ── Producción mensual (año anterior) ──
     mensual_ant_raw = db.execute(text("""
         SELECT p.periodo_aplicacion as periodo,
-               SUM(CASE WHEN pr.ramo_codigo=11 AND p.tipo_poliza='NUEVA' THEN 1 ELSE 0 END) as polizas_vida,
-               SUM(CASE WHEN pr.ramo_codigo=34 AND p.tipo_poliza='NUEVA' THEN 1 ELSE 0 END) as polizas_gmm,
-               SUM(CASE WHEN pr.ramo_codigo=90 AND p.tipo_poliza='NUEVA' THEN 1 ELSE 0 END) as polizas_autos,
-               SUM(CASE WHEN pr.ramo_codigo=11 AND p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_vida,
-               SUM(CASE WHEN pr.ramo_codigo=34 AND p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_gmm,
-               SUM(CASE WHEN pr.ramo_codigo=90 AND p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_autos
+               SUM(CASE WHEN pr.ramo_codigo=11 AND """ + SQL_ES_NUEVA + """ THEN 1 ELSE 0 END) as polizas_vida,
+               SUM(CASE WHEN pr.ramo_codigo=34 AND """ + SQL_ES_NUEVA + """ THEN 1 ELSE 0 END) as polizas_gmm,
+               SUM(CASE WHEN pr.ramo_codigo=90 AND """ + SQL_ES_NUEVA + """ THEN 1 ELSE 0 END) as polizas_autos,
+               SUM(CASE WHEN pr.ramo_codigo=11 AND """ + SQL_ES_NUEVA + """ THEN p.prima_neta ELSE 0 END) as prima_vida,
+               SUM(CASE WHEN pr.ramo_codigo=34 AND """ + SQL_ES_NUEVA + """ THEN p.prima_neta ELSE 0 END) as prima_gmm,
+               SUM(CASE WHEN pr.ramo_codigo=90 AND """ + SQL_ES_NUEVA + """ THEN p.prima_neta ELSE 0 END) as prima_autos
         FROM polizas p
         LEFT JOIN productos pr ON p.producto_id = pr.id
         WHERE p.anio_aplicacion = :anio_ant
@@ -318,10 +341,10 @@ def get_dashboard(
     top_raw = db.execute(text("""
         SELECT a.nombre_completo, a.codigo_agente, a.oficina,
                a.segmento_nombre as segmento,
-               COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) as polizas_nuevas,
-               SUM(CASE WHEN p.tipo_poliza='NUEVA' THEN COALESCE(p.equivalencias_emitidas, 0) ELSE 0 END) as equivalencias,
-               SUM(CASE WHEN p.tipo_poliza='NUEVA' THEN COALESCE(p.num_asegurados, 1) ELSE 0 END) as asegurados,
-               SUM(CASE WHEN p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_nueva,
+               COUNT(CASE WHEN """ + SQL_ES_NUEVA + """ THEN 1 END) as polizas_nuevas,
+               SUM(CASE WHEN """ + SQL_ES_NUEVA + """ THEN COALESCE(p.equivalencias_emitidas, 0) ELSE 0 END) as equivalencias,
+               SUM(CASE WHEN """ + SQL_ES_NUEVA + """ THEN COALESCE(p.num_asegurados, 1) ELSE 0 END) as asegurados,
+               SUM(CASE WHEN """ + SQL_ES_NUEVA + """ THEN p.prima_neta ELSE 0 END) as prima_nueva,
                SUM(p.prima_neta) as prima_total
         FROM polizas p
         LEFT JOIN agentes a ON p.agente_id = a.id
@@ -348,15 +371,15 @@ def get_dashboard(
     # ── Top 5 GMM (por asegurados) ──
     top_gmm_raw = db.execute(text("""
         SELECT a.nombre_completo, a.codigo_agente, a.oficina,
-               COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) as polizas_nuevas,
-               SUM(CASE WHEN p.tipo_poliza='NUEVA' THEN COALESCE(p.num_asegurados, 1) ELSE 0 END) as asegurados,
-               SUM(CASE WHEN p.tipo_poliza='NUEVA' THEN p.prima_neta ELSE 0 END) as prima_nueva
+               COUNT(CASE WHEN """ + SQL_ES_NUEVA + """ THEN 1 END) as polizas_nuevas,
+               SUM(CASE WHEN """ + SQL_ES_NUEVA + """ THEN COALESCE(p.num_asegurados, 1) ELSE 0 END) as asegurados,
+               SUM(CASE WHEN """ + SQL_ES_NUEVA + """ THEN p.prima_neta ELSE 0 END) as prima_nueva
         FROM polizas p
         LEFT JOIN productos pr ON p.producto_id = pr.id
         LEFT JOIN agentes a ON p.agente_id = a.id
         WHERE p.anio_aplicacion = :anio AND pr.ramo_codigo = 34
         GROUP BY a.id, a.nombre_completo, a.codigo_agente, a.oficina
-        HAVING COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) > 0
+        HAVING COUNT(CASE WHEN """ + SQL_ES_NUEVA + """ THEN 1 END) > 0
         ORDER BY asegurados DESC
         LIMIT 5
     """), {"anio": anio}).mappings().all()
@@ -375,17 +398,17 @@ def get_dashboard(
     # ── Top 5 VIDA (por equivalencias) ──
     top_vida_raw = db.execute(text("""
         SELECT a.nombre_completo, a.codigo_agente, a.oficina,
-               COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) as polizas_nuevas,
-               SUM(CASE WHEN p.tipo_poliza='NUEVA'
+               COUNT(CASE WHEN """ + SQL_ES_NUEVA + """ THEN 1 END) as polizas_nuevas,
+               SUM(CASE WHEN """ + SQL_ES_NUEVA + """
                    THEN COALESCE(p.equivalencias_emitidas, 0) ELSE 0 END) as equivalencias,
-               SUM(CASE WHEN p.tipo_poliza='NUEVA'
+               SUM(CASE WHEN """ + SQL_ES_NUEVA + """
                    THEN p.prima_neta ELSE 0 END) as prima_nueva
         FROM polizas p
         LEFT JOIN productos pr ON p.producto_id = pr.id
         LEFT JOIN agentes a ON p.agente_id = a.id
         WHERE p.anio_aplicacion = :anio AND pr.ramo_codigo = 11
         GROUP BY a.id, a.nombre_completo, a.codigo_agente, a.oficina
-        HAVING COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) > 0
+        HAVING COUNT(CASE WHEN """ + SQL_ES_NUEVA + """ THEN 1 END) > 0
         ORDER BY equivalencias DESC
         LIMIT 5
     """), {"anio": anio}).mappings().all()
@@ -497,13 +520,13 @@ def get_top_agentes_ramo(
         SELECT a.nombre_completo, a.codigo_agente, a.oficina,
                a.segmento_agrupado as segmento, a.gestion_comercial as gestion,
                a.lider_codigo,
-               COUNT(CASE WHEN p.tipo_poliza='NUEVA' THEN 1 END) as polizas_nuevas,
+               COUNT(CASE WHEN """ + SQL_ES_NUEVA + """ THEN 1 END) as polizas_nuevas,
                COUNT(CASE WHEN p.tipo_poliza='SUBSECUENTE' THEN 1 END) as polizas_subs,
                COUNT(*) as polizas_total,
                SUM(CASE WHEN p.flag_nueva_formal=1 THEN 1 ELSE 0 END) as polizas_nueva_formal,
                SUM(COALESCE(p.num_asegurados, 1)) as asegurados,
                SUM(COALESCE(p.equivalencias_emitidas, 0)) as equivalencias,
-               SUM(CASE WHEN p.tipo_poliza='NUEVA' THEN COALESCE(p.prima_neta, 0) ELSE 0 END) as prima_nueva,
+               SUM(CASE WHEN """ + SQL_ES_NUEVA + """ THEN COALESCE(p.prima_neta, 0) ELSE 0 END) as prima_nueva,
                SUM(CASE WHEN p.tipo_poliza='SUBSECUENTE' THEN COALESCE(p.prima_neta, 0) ELSE 0 END) as prima_subs,
                SUM(COALESCE(p.prima_neta, 0)) as prima_total,
                SUM(COALESCE(p.neta_acumulada, p.prima_neta, 0)) as prima_acum,
@@ -1591,8 +1614,8 @@ def list_agentes(
     rows = db.execute(text(f"""
         SELECT a.*,
                COUNT(p.id) as total_polizas,
-               SUM(CASE WHEN p.tipo_poliza='NUEVA' AND p.anio_aplicacion=2025 THEN 1 ELSE 0 END) as polizas_nuevas_2025,
-               SUM(CASE WHEN p.tipo_poliza='NUEVA' AND p.anio_aplicacion=2025 THEN p.prima_neta ELSE 0 END) as prima_nueva_2025
+               SUM(CASE WHEN """ + SQL_ES_NUEVA + """ AND p.anio_aplicacion=2025 THEN 1 ELSE 0 END) as polizas_nuevas_2025,
+               SUM(CASE WHEN """ + SQL_ES_NUEVA + """ AND p.anio_aplicacion=2025 THEN p.prima_neta ELSE 0 END) as prima_nueva_2025
         FROM agentes a
         LEFT JOIN polizas p ON p.agente_id = a.id
         {where}
