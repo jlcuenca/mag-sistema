@@ -494,8 +494,8 @@ def get_top_agentes_ramo(
         params["forma_pago"] = forma_pago.upper()
 
     if tipo and tipo.upper() in ("NUEVA", "SUBSECUENTE"):
-        filtro_ramo += " AND p.tipo_poliza = :tipo_poliza"
-        params["tipo_poliza"] = tipo.upper()
+        filtro_ramo += " AND " + SQL_ES_NUEVA if tipo.upper() == "NUEVA" else " AND " + SQL_ES_SUBSECUENTE
+        # No necesitamos params["tipo_poliza"] porque las condiciones SQL son literales
 
     if trimestre and trimestre.upper() in ("Q1", "Q2", "Q3", "Q4"):
         filtro_ramo += " AND UPPER(p.trimestre) = :trimestre"
@@ -521,13 +521,13 @@ def get_top_agentes_ramo(
                a.segmento_agrupado as segmento, a.gestion_comercial as gestion,
                a.lider_codigo,
                COUNT(CASE WHEN """ + SQL_ES_NUEVA + """ THEN 1 END) as polizas_nuevas,
-               COUNT(CASE WHEN p.tipo_poliza='SUBSECUENTE' THEN 1 END) as polizas_subs,
+               COUNT(CASE WHEN """ + SQL_ES_SUBSECUENTE + """ THEN 1 END) as polizas_subs,
                COUNT(*) as polizas_total,
                SUM(CASE WHEN p.flag_nueva_formal=1 THEN 1 ELSE 0 END) as polizas_nueva_formal,
                SUM(COALESCE(p.num_asegurados, 1)) as asegurados,
                SUM(COALESCE(p.equivalencias_emitidas, 0)) as equivalencias,
                SUM(CASE WHEN """ + SQL_ES_NUEVA + """ THEN COALESCE(p.prima_neta, 0) ELSE 0 END) as prima_nueva,
-               SUM(CASE WHEN p.tipo_poliza='SUBSECUENTE' THEN COALESCE(p.prima_neta, 0) ELSE 0 END) as prima_subs,
+               SUM(CASE WHEN """ + SQL_ES_SUBSECUENTE + """ THEN COALESCE(p.prima_neta, 0) ELSE 0 END) as prima_subs,
                SUM(COALESCE(p.prima_neta, 0)) as prima_total,
                SUM(COALESCE(p.neta_acumulada, p.prima_neta, 0)) as prima_acum,
                SUM(COALESCE(p.prima_anual_pesos, 0)) as prima_anual_pesos,
@@ -709,8 +709,10 @@ def get_pivot_agentes(
         params["ramo_codigo"] = ramo_map[ramo.lower()]
 
     if tipo and tipo.upper() in ("NUEVA", "SUBSECUENTE"):
-        filtro_extra += " AND p.tipo_poliza = :tipo_poliza"
-        params["tipo_poliza"] = tipo.upper()
+        if tipo.upper() == "NUEVA":
+            filtro_extra += " AND " + SQL_ES_NUEVA
+        else:
+            filtro_extra += " AND " + SQL_ES_SUBSECUENTE
 
     raw = db.execute(text(f"""
         SELECT a.nombre_completo, a.codigo_agente, a.segmento_agrupado as segmento,
@@ -853,10 +855,10 @@ def get_dashboard_ejecutivo(
 
     # ── 1. COMPARATIVO POR RAMO ──
     def build_comparativo(ramo_nombre, ramo_codigo, p_act, p_ant):
-        act_nuevas = [p for p in p_act if p["ramo_codigo"] == ramo_codigo and p["tipo_poliza"] == "NUEVA"]
-        ant_nuevas = [p for p in p_ant if p["ramo_codigo"] == ramo_codigo and p["tipo_poliza"] == "NUEVA"]
-        act_subs = [p for p in p_act if p["ramo_codigo"] == ramo_codigo and p["tipo_poliza"] == "SUBSECUENTE"]
-        ant_subs = [p for p in p_ant if p["ramo_codigo"] == ramo_codigo and p["tipo_poliza"] == "SUBSECUENTE"]
+        act_nuevas = [p for p in p_act if p["ramo_codigo"] == ramo_codigo and _es_nueva(p)]
+        ant_nuevas = [p for p in p_ant if p["ramo_codigo"] == ramo_codigo and _es_nueva(p)]
+        act_subs = [p for p in p_act if p["ramo_codigo"] == ramo_codigo and _es_subsecuente(p)]
+        ant_subs = [p for p in p_ant if p["ramo_codigo"] == ramo_codigo and _es_subsecuente(p)]
 
         pol_act_n = len(act_nuevas)
         pol_ant_n = len(ant_nuevas)
@@ -900,14 +902,14 @@ def get_dashboard_ejecutivo(
         seg = p["segmento_agrupado"] or "SIN SEGMENTO"
         ag_code = p["codigo_agente"]
         seg_data[seg]["agentes"].add(ag_code)
-        if p["ramo_codigo"] == 11 and p["tipo_poliza"] == "NUEVA":
+        if p["ramo_codigo"] == 11 and _es_nueva(p):
             seg_data[seg]["polizas_vida"] += 1
             seg_data[seg]["prima_vida"] += (p["prima_neta"] or 0)
             seg_data[seg]["equivalentes"] += (p["equivalencias_emitidas"] or 0)
-        elif p["ramo_codigo"] == 34 and p["tipo_poliza"] == "NUEVA":
+        elif p["ramo_codigo"] == 34 and _es_nueva(p):
             seg_data[seg]["polizas_gmm"] += 1
             seg_data[seg]["prima_gmm"] += (p["prima_neta"] or 0)
-        elif p["ramo_codigo"] == 90 and p["tipo_poliza"] == "NUEVA":
+        elif p["ramo_codigo"] == 90 and _es_nueva(p):
             seg_data[seg]["polizas_autos"] += 1
             seg_data[seg]["prima_autos"] += (p["prima_neta"] or 0)
 
@@ -967,8 +969,8 @@ def get_dashboard_ejecutivo(
         is_vida = p["ramo_codigo"] == 11
         is_gmm = p["ramo_codigo"] == 34
         is_autos = p["ramo_codigo"] == 90
-        is_nueva = p["tipo_poliza"] == "NUEVA"
-        is_sub = p["tipo_poliza"] == "SUBSECUENTE"
+        is_nueva = _es_nueva(p)
+        is_sub = _es_subsecuente(p)
         prima = p["prima_neta"] or 0
         equiv = p["equivalencias_emitidas"] or 0
 
@@ -1097,14 +1099,14 @@ def get_dashboard_ejecutivo(
         act_by_month = defaultdict(lambda: {"polizas": 0, "prima": 0.0})
         ant_by_month = defaultdict(lambda: {"polizas": 0, "prima": 0.0})
         for p in p_act:
-            if p["ramo_codigo"] == ramo_codigo and p["tipo_poliza"] == "NUEVA":
+            if p["ramo_codigo"] == ramo_codigo and _es_nueva(p):
                 per = p["periodo_aplicacion"] or ""
                 if len(per) >= 7:
                     m = int(per[5:7])
                     act_by_month[m]["polizas"] += 1
                     act_by_month[m]["prima"] += (p["prima_neta"] or 0)
         for p in p_ant:
-            if p["ramo_codigo"] == ramo_codigo and p["tipo_poliza"] == "NUEVA":
+            if p["ramo_codigo"] == ramo_codigo and _es_nueva(p):
                 per = p["periodo_aplicacion"] or ""
                 if len(per) >= 7:
                     m = int(per[5:7])
@@ -1516,8 +1518,10 @@ def list_polizas(
     elif ramo == "autos":
         conditions.append("pr.ramo_codigo = 90")
     if tipo:
-        conditions.append("p.tipo_poliza = :tipo")
-        params["tipo"] = tipo.upper()
+        if tipo.upper() == "NUEVA":
+            conditions.append(SQL_ES_NUEVA)
+        elif tipo.upper() == "SUBSECUENTE":
+            conditions.append(SQL_ES_SUBSECUENTE)
     if agente:
         conditions.append("a.codigo_agente = :agente")
         params["agente"] = agente
@@ -2361,8 +2365,10 @@ def exportar_polizas_excel(
     elif ramo == "gmm":
         conditions.append("pr.ramo_codigo = 34")
     if tipo:
-        conditions.append("p.tipo_poliza = :tipo")
-        params["tipo"] = tipo.upper()
+        if tipo.upper() == "NUEVA":
+            conditions.append(SQL_ES_NUEVA)
+        elif tipo.upper() == "SUBSECUENTE":
+            conditions.append(SQL_ES_SUBSECUENTE)
 
     where = " AND ".join(conditions)
     rows = db.execute(text(f"""
@@ -2466,7 +2472,7 @@ def get_finanzas(
             com = pn * (p.pct_comision or 0.08)
             meses_data[m]["comision"] += com
 
-            if p.tipo_poliza == "NUEVA":
+            if p.flag_nueva_formal == 1 or (p.flag_nueva_formal is None and p.tipo_poliza == "NUEVA"):
                 meses_data[m]["prima_nueva"] += pn
             else:
                 meses_data[m]["prima_sub"] += pn
