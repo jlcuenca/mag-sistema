@@ -2023,7 +2023,7 @@ def aplicar_reglas_todas(
                     equivalencias_pagadas = :eqp, flag_cancelada = :fcanc,
                     prima_proporcional = :pprop, condicional_prima = :cprim,
                     prima_acumulada_basica = :pacum,
-                    updated_at = datetime('now')
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE id = :id
             """), {
                 "id": poliza_dict["id"],
