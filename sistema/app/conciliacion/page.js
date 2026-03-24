@@ -14,7 +14,7 @@ const STATUS_COLORS = {
 export default function Conciliacion() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [periodo, setPeriodo] = useState('2025-07');
+    const [periodo, setPeriodo] = useState('2025-12');
 
     useEffect(() => {
         setLoading(true);
@@ -47,10 +47,10 @@ export default function Conciliacion() {
                         <select value={periodo} onChange={e => setPeriodo(e.target.value)}>
                             {periodos.length > 0 ? periodos.map(p => (
                                 <option key={p} value={p}>{p}</option>
-                            )) : <option value="2025-07">2025-07</option>}
+                            )) : <option value="2025-12">2025-12</option>}
                         </select>
-                        <span className={`badge ${(resumen.pctCoincidencia || 0) >= 80 ? 'badge-emerald' : 'badge-amber'}`}>
-                            {resumen.pctCoincidencia || 0}% coincidencia
+                        <span className={`badge ${(resumen.pct_coincidencia || 0) >= 80 ? 'badge-emerald' : 'badge-amber'}`}>
+                            {resumen.pct_coincidencia || 0}% coincidencia
                         </span>
                     </div>
                 </header>
@@ -78,7 +78,7 @@ export default function Conciliacion() {
                                     { label: 'Total AXA', value: resumen.total || 0, color: '#60a5fa', icon: '📊' },
                                     { label: 'Coinciden', value: resumen.coincide || 0, color: '#34d399', icon: '✅' },
                                     { label: 'Con Diferencia', value: resumen.diferencia || 0, color: '#fbbf24', icon: '⚠️' },
-                                    { label: 'Solo en AXA', value: resumen.soloAxa || 0, color: '#f87171', icon: '❌' },
+                                    { label: 'Solo en AXA', value: resumen.solo_axa || 0, color: '#f87171', icon: '❌' },
                                 ].map((k, i) => (
                                     <div key={i} className="kpi-card" style={{ [`--c`]: k.color }}>
                                         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: k.color, borderRadius: '16px 16px 0 0' }} />
@@ -170,9 +170,9 @@ export default function Conciliacion() {
                                                             </span>
                                                         </td>
                                                         <td>
-                                                            {c.poliza_interna ? (
-                                                                <span style={{ fontSize: 11, fontWeight: 600, color: c.poliza_interna.tipo_poliza === 'NUEVA' ? '#34d399' : '#fbbf24' }}>
-                                                                    {c.poliza_interna.tipo_poliza}
+                                                            {c.tipo_poliza_interna ? (
+                                                                <span style={{ fontSize: 11, fontWeight: 600, color: c.tipo_poliza_interna === 'NUEVA' ? '#34d399' : '#fbbf24' }}>
+                                                                    {c.tipo_poliza_interna}
                                                                 </span>
                                                             ) : <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>No encontrada</span>}
                                                         </td>

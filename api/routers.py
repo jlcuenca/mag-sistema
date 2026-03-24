@@ -1649,9 +1649,14 @@ router_conciliacion = APIRouter(prefix="/conciliacion", tags=["Conciliación"])
 
 @router_conciliacion.get("", response_model=ConciliacionResponse)
 def get_conciliacion(
-    periodo: str = Query("2025-07"),
+    periodo: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
+    if not periodo:
+        # Por defecto el último periodo disponible
+        periodo = db.execute(text("SELECT MAX(periodo) FROM indicadores_axa")).scalar()
+        if not periodo:
+            periodo = "2025-12"  # Fallback
     indicadores = db.execute(text("""
         SELECT i.*, a.nombre_completo as agente_nombre
         FROM indicadores_axa i
@@ -1662,17 +1667,22 @@ def get_conciliacion(
     conciliacion = []
     for ind in indicadores:
         poliza_int = db.execute(text("""
-            SELECT p.tipo_poliza, pr.ramo_codigo, pr.ramo_nombre
+            SELECT p.tipo_poliza, p.flag_nueva_formal, pr.ramo_codigo, pr.ramo_nombre
             FROM polizas p
             LEFT JOIN productos pr ON p.producto_id = pr.id
             WHERE p.poliza_estandar = :pe OR p.poliza_original = :po
         """), {"pe": ind["poliza"], "po": ind["poliza"]}).mappings().first()
 
         if poliza_int:
-            coincide = poliza_int["tipo_poliza"] == "NUEVA" and ind["es_nueva_axa"]
+            # Usar lógica consistente de nueva/subsecuente
+            int_es_nueva = _es_nueva(poliza_int)
+            axa_es_nueva = bool(ind["es_nueva_axa"])
+
+            coincide = (int_es_nueva == axa_es_nueva)
             status = "COINCIDE" if coincide else "DIFERENCIA"
-            dif = None if coincide else f"Interno: {poliza_int['tipo_poliza']}, AXA: {'NUEVA' if ind['es_nueva_axa'] else 'NO NUEVA'}"
-            tipo_pol_int = poliza_int["tipo_poliza"]
+            
+            tipo_pol_int = "NUEVA" if int_es_nueva else "SUBSECUENTE"
+            dif = None if coincide else f"Interno: {tipo_pol_int}, AXA: {'NUEVA' if axa_es_nueva else 'NO NUEVA'}"
         else:
             status = "SOLO_AXA"
             dif = "Póliza en AXA no encontrada en base interna"
@@ -1690,15 +1700,53 @@ def get_conciliacion(
             tipo_diferencia=dif,
         ))
 
+    # ── Solo Interno (No en indicadores AXA) ──
+    # Extraemos pólizas ya procesadas (AXA) para filtrar las internas
+    procesadas_axa = [c.poliza for c in conciliacion]
+    
+    # Buscamos en base interna del mismo periodo que no estén en AXA
+    internal_only = db.execute(text("""
+        SELECT p.poliza_original, p.poliza_estandar, a.codigo_agente, a.nombre_completo as agente_nombre, 
+               pr.ramo_nombre as ramo, p.prima_neta, p.flag_nueva_formal, p.tipo_poliza, pr.ramo_codigo
+        FROM polizas p
+        LEFT JOIN agentes a ON p.agente_id = a.id
+        LEFT JOIN productos pr ON p.producto_id = pr.id
+        WHERE p.periodo_aplicacion = :periodo
+          AND p.poliza_original NOT IN :paxa
+          AND p.poliza_estandar NOT IN :paxa
+    """), {"periodo": periodo, "paxa": tuple(procesadas_axa) if procesadas_axa else ('',)}).mappings().all()
+
+    for p in internal_only:
+        int_es_nueva = _es_nueva(p)
+        conciliacion.append(ItemConciliacion(
+            poliza=p["poliza_original"],
+            agente_codigo=p["codigo_agente"],
+            agente_nombre=p["agente_nombre"],
+            ramo=p["ramo"] or "VIDA/GMM",
+            prima_primer_anio=p["prima_neta"],
+            es_nueva_axa=None,
+            tipo_poliza_interna="NUEVA" if int_es_nueva else "SUBSECUENTE",
+            status="SOLO_INTERNO",
+            tipo_diferencia="Póliza interna no reportada en indicadores AXA",
+        ))
+
     coincide_n = sum(1 for c in conciliacion if c.status == "COINCIDE")
     dif_n      = sum(1 for c in conciliacion if c.status == "DIFERENCIA")
     solo_axa_n = sum(1 for c in conciliacion if c.status == "SOLO_AXA")
-    total_n    = len(conciliacion)
-    pct = round((coincide_n / total_n * 100) if total_n else 0, 1)
+    solo_int_n = sum(1 for c in conciliacion if c.status == "SOLO_INTERNO")
+    total_total = len(conciliacion)
+    
+    # La tasa de coincidencia base es AXA (cuántas de AXA coinciden)
+    total_axa   = coincide_n + dif_n + solo_axa_n
+    pct = round((coincide_n / total_axa * 100) if total_axa else 0, 1)
 
     resumen = ResumenConciliacion(
-        total=total_n, coincide=coincide_n, diferencia=dif_n,
-        solo_axa=solo_axa_n, pct_coincidencia=pct
+        total=total_axa,
+        coincide=coincide_n,
+        diferencia=dif_n,
+        solo_axa=solo_axa_n,
+        solo_interno=solo_int_n,
+        pct_coincidencia=pct
     )
 
     periodos_raw = db.execute(text("SELECT DISTINCT periodo FROM indicadores_axa ORDER BY periodo DESC")).scalars().all()
