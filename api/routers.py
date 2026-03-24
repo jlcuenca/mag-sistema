@@ -3181,54 +3181,74 @@ def get_indicadores_solicitudes(
     ramo: str = Query("", description="Filtro por ramo: SALUD, VIDA, o vacío=todos"),
     etapa: str = Query("", description="Filtro por etapa"),
     agente: str = Query("", description="Filtro por ID de agente"),
+    segmento: str = Query("", description="Filtro por segmento agrupado"),
+    gestion: str = Query("", description="Filtro por gestión comercial"),
+    lider: str = Query("", description="Filtro por líder/promotor"),
     db: Session = Depends(get_db)
 ):
-    """Dashboard de indicadores del pipeline de solicitudes."""
-    base = "FROM etapas_solicitudes WHERE ano_recepcion = :anio"
+    """Dashboard de indicadores del pipeline de solicitudes con soporte para vista Looker (Pivots)."""
+    # Usar JOIN con agentes para soportar filtros de segmento/gestión
+    base = """
+        FROM etapas_solicitudes es
+        LEFT JOIN agentes a ON es.idagente = a.codigo_agente
+        WHERE es.ano_recepcion = :anio
+    """
     params = {"anio": anio}
 
     if ramo:
-        base += " AND UPPER(nomramo) = :ramo"
+        base += " AND UPPER(es.nomramo) = :ramo"
         params["ramo"] = ramo.upper()
     if etapa:
-        base += " AND etapa = :etapa"
+        base += " AND es.etapa = :etapa"
         params["etapa"] = etapa
     if agente:
-        base += " AND idagente = :agente"
+        base += " AND es.idagente = :agente"
         params["agente"] = agente
+    if segmento:
+        base += " AND a.segmento_agrupado = :segmento"
+        params["segmento"] = segmento
+    if gestion:
+        base += " AND a.gestion_comercial = :gestion"
+        params["gestion"] = gestion
+    if lider:
+        base += " AND a.lider_codigo = :lider"
+        params["lider"] = lider
+
+    # Seleccionar columnas específicas para evitar ambigüedad
+    base_select = base.replace("es.", "es.").replace("a.", "a.")
 
     # KPIs principales
     total = db.execute(text(f"SELECT COUNT(*) {base}"), params).scalar() or 0
-    emitidas = db.execute(text(f"SELECT COUNT(*) {base} AND etapa = 'POLIZA_ENVIADA'"), params).scalar() or 0
-    rechazos_emision = db.execute(text(f"SELECT COUNT(*) {base} AND etapa = 'RECHAZO_EMISION'"), params).scalar() or 0
-    rechazos_exp = db.execute(text(f"SELECT COUNT(*) {base} AND etapa = 'RECHAZO_EXPIRACION'"), params).scalar() or 0
-    rechazos_sel = db.execute(text(f"SELECT COUNT(*) {base} AND etapa = 'RECHAZO_SELECCION'"), params).scalar() or 0
-    rechazos_aut = db.execute(text(f"SELECT COUNT(*) {base} AND etapa LIKE 'RECHAZO_AUT%'"), params).scalar() or 0
-    canceladas = db.execute(text(f"SELECT COUNT(*) {base} AND etapa = 'CANCELADO'"), params).scalar() or 0
-    en_tramite = db.execute(text(f"SELECT COUNT(*) {base} AND (etapa IS NULL OR etapa NOT IN ('POLIZA_ENVIADA','RECHAZO_EMISION','RECHAZO_EXPIRACION','RECHAZO_SELECCION','RECHAZO_AUT_INFO_AD','CANCELADO'))"), params).scalar() or 0
+    emitidas = db.execute(text(f"SELECT COUNT(*) {base} AND es.etapa = 'POLIZA_ENVIADA'"), params).scalar() or 0
+    rechazos_emision = db.execute(text(f"SELECT COUNT(*) {base} AND es.etapa = 'RECHAZO_EMISION'"), params).scalar() or 0
+    rechazos_exp = db.execute(text(f"SELECT COUNT(*) {base} AND es.etapa = 'RECHAZO_EXPIRACION'"), params).scalar() or 0
+    rechazos_sel = db.execute(text(f"SELECT COUNT(*) {base} AND es.etapa = 'RECHAZO_SELECCION'"), params).scalar() or 0
+    rechazos_aut = db.execute(text(f"SELECT COUNT(*) {base} AND es.etapa LIKE 'RECHAZO_AUT%'"), params).scalar() or 0
+    canceladas = db.execute(text(f"SELECT COUNT(*) {base} AND es.etapa = 'CANCELADO'"), params).scalar() or 0
+    en_tramite = db.execute(text(f"SELECT COUNT(*) {base} AND (es.etapa IS NULL OR es.etapa NOT IN ('POLIZA_ENVIADA','RECHAZO_EMISION','RECHAZO_EXPIRACION','RECHAZO_SELECCION','RECHAZO_AUT_INFO_AD','CANCELADO'))"), params).scalar() or 0
 
     total_rechazos = rechazos_emision + rechazos_exp + rechazos_sel + rechazos_aut
     tasa_emision = round((emitidas / total * 100), 1) if total > 0 else 0
     tasa_rechazo = round((total_rechazos / total * 100), 1) if total > 0 else 0
 
-    avg_dias = db.execute(text(f"SELECT AVG(dias_tramite) {base} AND dias_tramite IS NOT NULL AND dias_tramite >= 0"), params).scalar()
+    avg_dias = db.execute(text(f"SELECT AVG(es.dias_tramite) {base} AND es.dias_tramite IS NOT NULL AND es.dias_tramite >= 0"), params).scalar()
     avg_dias = round(avg_dias, 1) if avg_dias else 0
 
-    avg_emitidas = db.execute(text(f"SELECT AVG(dias_tramite) {base} AND etapa = 'POLIZA_ENVIADA' AND dias_tramite IS NOT NULL AND dias_tramite >= 0"), params).scalar()
+    avg_emitidas = db.execute(text(f"SELECT AVG(es.dias_tramite) {base} AND es.etapa = 'POLIZA_ENVIADA' AND es.dias_tramite IS NOT NULL AND es.dias_tramite >= 0"), params).scalar()
     avg_emitidas = round(avg_emitidas, 1) if avg_emitidas else 0
 
-    nuevos = db.execute(text(f"SELECT COUNT(*) {base} AND nuevo = 1"), params).scalar() or 0
+    nuevos = db.execute(text(f"SELECT COUNT(*) {base} AND es.nuevo = 1"), params).scalar() or 0
     reingresos = total - nuevos
 
     # Solicitantes totales
-    total_solicitantes = db.execute(text(f"SELECT COALESCE(SUM(numsolicitantes), 0) {base}"), params).scalar() or 0
+    total_solicitantes = db.execute(text(f"SELECT COALESCE(SUM(es.numsolicitantes), 0) {base}"), params).scalar() or 0
 
     # Por mes (para gráfica)
     mensual = db.execute(text(f"""
-        SELECT mes_recepcion, etapa, COUNT(*) c
-        {base} AND mes_recepcion IS NOT NULL
-        GROUP BY mes_recepcion, etapa
-        ORDER BY mes_recepcion
+        SELECT es.mes_recepcion, es.etapa, COUNT(*) c
+        {base} AND es.mes_recepcion IS NOT NULL
+        GROUP BY es.mes_recepcion, es.etapa
+        ORDER BY es.mes_recepcion
     """), params).fetchall()
 
     meses_data = {}
@@ -3246,31 +3266,22 @@ def get_indicadores_solicitudes(
 
     # Por ramo
     ramos = db.execute(text(f"""
-        SELECT nomramo, COUNT(*) total,
-               SUM(CASE WHEN etapa = 'POLIZA_ENVIADA' THEN 1 ELSE 0 END) emitidas,
-               SUM(CASE WHEN etapa LIKE 'RECHAZO%' THEN 1 ELSE 0 END) rechazadas
-        {base} AND nomramo IS NOT NULL
-        GROUP BY nomramo ORDER BY total DESC
+        SELECT es.nomramo, COUNT(*) total,
+               SUM(CASE WHEN es.etapa = 'POLIZA_ENVIADA' THEN 1 ELSE 0 END) emitidas,
+               SUM(CASE WHEN es.etapa LIKE 'RECHAZO%' THEN 1 ELSE 0 END) rechazadas
+        {base} AND es.nomramo IS NOT NULL
+        GROUP BY es.nomramo ORDER BY total DESC
     """), params).fetchall()
     por_ramo = [{"ramo": r[0], "total": r[1], "emitidas": r[2], "rechazadas": r[3],
                  "tasa_emision": round(r[2] / r[1] * 100, 1) if r[1] > 0 else 0} for r in ramos]
 
     # Top agentes por solicitudes
-    agente_where = "WHERE ano_recepcion = :anio AND idagente IS NOT NULL"
-    if ramo:
-        agente_where += " AND UPPER(nomramo) = :ramo"
-    if etapa:
-        agente_where += " AND etapa = :etapa"
-    if agente:
-        agente_where += " AND idagente = :agente"
-
     top_agentes = db.execute(text(f"""
-        SELECT idagente, COUNT(*) total,
-               SUM(CASE WHEN etapa = 'POLIZA_ENVIADA' THEN 1 ELSE 0 END) emitidas,
-               SUM(CASE WHEN etapa IN ('RECHAZO_EMISION','RECHAZO_EXPIRACION','RECHAZO_SELECCION','RECHAZO_AUT_INFO_AD') THEN 1 ELSE 0 END) rechazadas
-        FROM etapas_solicitudes
-        {agente_where}
-        GROUP BY idagente
+        SELECT es.idagente, COUNT(*) total,
+               SUM(CASE WHEN es.etapa = 'POLIZA_ENVIADA' THEN 1 ELSE 0 END) emitidas,
+               SUM(CASE WHEN es.etapa IN ('RECHAZO_EMISION','RECHAZO_EXPIRACION','RECHAZO_SELECCION','RECHAZO_AUT_INFO_AD') THEN 1 ELSE 0 END) rechazadas
+        {base} AND es.idagente IS NOT NULL
+        GROUP BY es.idagente
         ORDER BY total DESC LIMIT 15
     """), params).fetchall()
     agentes_data = [{
@@ -3280,18 +3291,41 @@ def get_indicadores_solicitudes(
 
     # Distribución de etapas
     dist_etapas = db.execute(text(f"""
-        SELECT etapa, COUNT(*) c
-        {base} AND etapa IS NOT NULL
-        GROUP BY etapa ORDER BY c DESC
+        SELECT es.etapa, COUNT(*) c
+        {base} AND es.etapa IS NOT NULL
+        GROUP BY es.etapa ORDER BY c DESC
     """), params).fetchall()
     etapas_data = [{"etapa": e[0], "count": e[1],
                     "porcentaje": round(e[1] / total * 100, 1) if total > 0 else 0} for e in dist_etapas]
 
+    # ── Datos Pivot Heatmap (Looker Style) ──
+    res_pivot_ramo = db.execute(text(f"""
+        SELECT es.nomramo, es.mes_recepcion, COUNT(*) as c
+        {base} AND es.nomramo IS NOT NULL AND es.mes_recepcion IS NOT NULL
+        GROUP BY es.nomramo, es.mes_recepcion
+    """), params).fetchall()
+    pivot_ramo_dict = defaultdict(lambda: {m: 0 for m in range(1, 13)})
+    for r, m, c in res_pivot_ramo:
+        pivot_ramo_dict[r][m] = c
+    pivot_ramo = [{"nombre": r, "meses": m, "total": sum(m.values())} for r, m in pivot_ramo_dict.items()]
+    pivot_ramo.sort(key=lambda x: x["total"], reverse=True)
+
+    res_pivot_etapa = db.execute(text(f"""
+        SELECT es.etapa, es.mes_recepcion, COUNT(*) as c
+        {base} AND es.etapa IS NOT NULL AND es.mes_recepcion IS NOT NULL
+        GROUP BY es.etapa, es.mes_recepcion
+    """), params).fetchall()
+    pivot_etapa_dict = defaultdict(lambda: {m: 0 for m in range(1, 13)})
+    for e, m, c in res_pivot_etapa:
+        pivot_etapa_dict[e][m] = c
+    pivot_etapa = [{"nombre": e, "meses": m, "total": sum(m.values())} for e, m in pivot_etapa_dict.items()]
+    pivot_etapa.sort(key=lambda x: x["total"], reverse=True)
+
     # Rechazos recientes con observaciones
     rechazos_recientes = db.execute(text(f"""
-        SELECT nosol, contratante, nomramo, etapa, observaciones, fecrecepcion, fecetapa, idagente, dias_tramite
-        {base} AND etapa LIKE 'RECHAZO%' AND observaciones IS NOT NULL
-        ORDER BY fecetapa DESC LIMIT 20
+        SELECT es.nosol, es.contratante, es.nomramo, es.etapa, es.observaciones, es.fecrecepcion, es.fecetapa, es.idagente, es.dias_tramite
+        {base} AND es.etapa LIKE 'RECHAZO%' AND es.observaciones IS NOT NULL
+        ORDER BY es.fecetapa DESC LIMIT 20
     """), params).fetchall()
     rechazos_lista = [{
         "nosol": r[0], "contratante": r[1], "ramo": r[2], "etapa": r[3],
@@ -3299,11 +3333,11 @@ def get_indicadores_solicitudes(
         "fecha_recepcion": r[5], "fecha_etapa": r[6], "agente": r[7], "dias": r[8]
     } for r in rechazos_recientes]
 
-    # Disponibilidad de años
-    anios_disp = db.execute(text("""
-        SELECT DISTINCT ano_recepcion FROM etapas_solicitudes
-        WHERE ano_recepcion IS NOT NULL ORDER BY ano_recepcion
-    """)).fetchall()
+    # Filtros disponibles
+    anios_disp = db.execute(text("SELECT DISTINCT ano_recepcion FROM etapas_solicitudes WHERE ano_recepcion IS NOT NULL ORDER BY ano_recepcion")).scalars().all()
+    segmentos_disp = db.execute(text("SELECT DISTINCT segmento_agrupado FROM agentes WHERE segmento_agrupado IS NOT NULL ORDER BY 1")).scalars().all()
+    gestiones_disp = db.execute(text("SELECT DISTINCT gestion_comercial FROM agentes WHERE gestion_comercial IS NOT NULL ORDER BY 1")).scalars().all()
+    lideres_disp = db.execute(text("SELECT DISTINCT lider_codigo FROM agentes WHERE lider_codigo IS NOT NULL ORDER BY 1")).scalars().all()
 
     return {
         "kpis": {
@@ -3329,7 +3363,14 @@ def get_indicadores_solicitudes(
         "top_agentes": agentes_data,
         "etapas": etapas_data,
         "rechazos_recientes": rechazos_lista,
+        "pivot_ramo": pivot_ramo,
+        "pivot_etapa": pivot_etapa,
         "anio": anio,
-        "anios_disponibles": [a[0] for a in anios_disp],
-        "filtros": {"ramo": ramo, "etapa": etapa, "agente": agente},
+        "anios_disponibles": list(anios_disp),
+        "disponibles": {
+            "segmentos": list(segmentos_disp),
+            "gestiones": list(gestiones_disp),
+            "lideres": list(lideres_disp)
+        },
+        "filtros": {"ramo": ramo, "etapa": etapa, "agente": agente, "segmento": segmento, "gestion": gestion, "lider": lider},
     }
