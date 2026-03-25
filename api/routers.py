@@ -2400,6 +2400,9 @@ def exportar_polizas_excel(
     anio: Optional[int] = None,
     ramo: Optional[str] = None,
     tipo: Optional[str] = None,
+    segmento: Optional[str] = None,
+    gestion: Optional[str] = None,
+    agente_codigo: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Exporta las pólizas filtradas como archivo Excel."""
@@ -2414,16 +2417,30 @@ def exportar_polizas_excel(
         conditions.append("pr.ramo_codigo = 11")
     elif ramo == "gmm":
         conditions.append("pr.ramo_codigo = 34")
+    elif ramo == "autos":
+        conditions.append("pr.ramo_codigo = 90")
+    
     if tipo:
         if tipo.upper() == "NUEVA":
             conditions.append(SQL_ES_NUEVA)
         elif tipo.upper() == "SUBSECUENTE":
             conditions.append(SQL_ES_SUBSECUENTE)
 
+    if segmento:
+        conditions.append("a.segmento_agrupado = :seg")
+        params["seg"] = segmento.upper()
+    if gestion:
+        conditions.append("a.gestion_comercial LIKE :gest")
+        params["gest"] = f"%{gestion}%"
+    if agente_codigo:
+        conditions.append("a.codigo_agente = :agc")
+        params["agc"] = agente_codigo
+
     where = " AND ".join(conditions)
     rows = db.execute(text(f"""
         SELECT p.poliza_original, p.asegurado_nombre, a.nombre_completo as agente,
-               a.codigo_agente, pr.ramo_nombre, p.gama, p.fecha_inicio, p.fecha_fin,
+               a.codigo_agente, a.segmento_agrupado as segmento,
+               pr.ramo_nombre, p.gama, p.fecha_inicio, p.fecha_fin,
                p.prima_neta, p.prima_total, p.iva, p.forma_pago, p.tipo_pago,
                p.status_recibo, p.tipo_poliza, p.tipo_prima, p.pct_comision,
                p.num_asegurados, p.suma_asegurada, p.mystatus, p.periodo_aplicacion

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import Sidebar from '@/components/Sidebar';
 import {
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
     PieChart, Pie, Cell, Legend
@@ -103,7 +104,10 @@ export default function TopAgentes() {
     };
 
     return (
-        <div>
+        <div className="layout">
+            <Sidebar />
+            <main className="main">
+                <div className="page-content fade-in">
             <div className="page-header">
                 <div>
                     <h1 className="page-title">🏆 Top Agentes</h1>
@@ -496,6 +500,8 @@ export default function TopAgentes() {
                     )}
                 </div>
             )}
+                </div>
+            </main>
         </div>
     );
 }

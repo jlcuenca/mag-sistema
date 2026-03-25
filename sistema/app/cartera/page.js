@@ -5,7 +5,7 @@ import { apiFetch } from '@/lib/api';
 
 function diasParaVencer(fechaFin) {
     if (!fechaFin) return null;
-    const hoy = new Date('2026-02-23');
+    const hoy = new Date();
     const fin = new Date(fechaFin);
     return Math.round((fin - hoy) / (1000 * 60 * 60 * 24));
 }
@@ -26,7 +26,8 @@ export default function Cartera() {
 
     useEffect(() => {
         setLoading(true);
-        apiFetch('/polizas?limit=200&anio=2025')
+        // Traemos las pólizas más recientes sin filtrar por año para ver toda la cartera activa
+        apiFetch('/polizas?limit=500')
             .then(d => {
                 setPolizas(d.data || []);
                 setLoading(false);

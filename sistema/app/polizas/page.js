@@ -11,7 +11,11 @@ function StatusPill({ status }) {
     return <span className="status-pill status-no-aplica">{status}</span>;
 }
 
-function TipoPill({ tipo }) {
+function TipoPill({ tipo, formalFlag }) {
+    // La regla de negocio de flag_nueva_formal tiene prioridad sobre el tipo crudo de importación
+    if (formalFlag === 1) return <span className="status-pill status-nueva">Nueva</span>;
+    if (formalFlag === 0) return <span className="status-pill status-subsecuente">Subsec.</span>;
+    
     if (tipo === 'NUEVA') return <span className="status-pill status-nueva">Nueva</span>;
     if (tipo === 'SUBSECUENTE') return <span className="status-pill status-subsecuente">Subsec.</span>;
     return <span className="status-pill status-no-aplica">No aplica</span>;
@@ -193,7 +197,7 @@ export default function Polizas() {
                                                 ${(p.prima_neta || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                             </td>
                                             <td><StatusPill status={p.status_recibo} /></td>
-                                            <td><TipoPill tipo={p.tipo_poliza} /></td>
+                                            <td><TipoPill tipo={p.tipo_poliza} formalFlag={p.flag_nueva_formal} /></td>
                                             <td>
                                                 {p.tipo_prima ? (
                                                     <span style={{ fontSize: 11, fontWeight: 600, color: p.tipo_prima === 'BASICA' ? 'var(--accent-emerald)' : 'var(--accent-rose)' }}>

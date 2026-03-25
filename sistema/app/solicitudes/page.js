@@ -43,19 +43,23 @@ export default function IndicadoresSolicitudes() {
     }, [anio, ramo, segmento, gestion, lider]);
 
     if (loading) return (
-        <div style={{ display: 'flex', minHeight: '100vh', background: '#0a0e1a' }}>
+        <div className="layout">
             <Sidebar />
-            <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ color: '#94a3b8', fontSize: 18 }}>⏳ Cargando indicadores...</div>
+            <main className="main">
+                <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: 18 }}>⏳ Cargando indicadores...</div>
+                </div>
             </main>
         </div>
     );
 
     if (!data) return (
-        <div style={{ display: 'flex', minHeight: '100vh', background: '#0a0e1a' }}>
+        <div className="layout">
             <Sidebar />
-            <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ color: '#ef4444', fontSize: 18 }}>❌ Error al cargar datos.</div>
+            <main className="main">
+                <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                    <div style={{ color: 'var(--accent-rose)', fontSize: 18 }}>❌ Error al cargar datos.</div>
+                </div>
             </main>
         </div>
     );
@@ -65,9 +69,10 @@ export default function IndicadoresSolicitudes() {
     const disponibilidad = data.disponibles || {};
 
     return (
-        <div style={{ display: 'flex', minHeight: '100vh', background: '#0a0e1a' }}>
+        <div className="layout">
             <Sidebar />
-            <main style={{ flex: 1, padding: '24px 32px', overflowY: 'auto' }}>
+            <main className="main">
+                <div className="page-content fade-in">
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
                     <div>
@@ -237,6 +242,7 @@ export default function IndicadoresSolicitudes() {
                             </div>
                         </div>
                     )}
+                </div>
                 </div>
             </main>
         </div>

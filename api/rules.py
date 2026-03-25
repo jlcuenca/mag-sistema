@@ -623,6 +623,7 @@ def flag_nueva_formal(
     mystatus: str,
     prima_acumulada: float = 0,
     ramo_codigo: int = None,
+    raw_tipo: str = None,
 ) -> int:
     """
     Determina si la póliza cuenta como nueva formalmente.
@@ -631,6 +632,10 @@ def flag_nueva_formal(
     Excel GMM: =IF(BM2=2025,IF(OR(BD2="CANC/X SUSTITUCION",...,"CANCELADA"),0,
                   IF(BD2="",IF(CF2=0,0,1),1)),1)
     """
+    # Si el dato de origen ya indica que es subsecuente, lo respetamos
+    if raw_tipo == "SUBSECUENTE":
+        return 0
+
     current_year = datetime.now().year
     if anio_aplicacion != current_year and anio_aplicacion != current_year - 1:
         return 1
@@ -859,6 +864,7 @@ def aplicar_reglas_poliza(poliza: dict, ramo_codigo: int = None) -> dict:
         mystatus=ms,
         prima_acumulada=_prima_acum,
         ramo_codigo=ramo_codigo,
+        raw_tipo=poliza.get("tipo_poliza"),
     )
 
     # Equivalencias emitidas

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import Sidebar from '@/components/Sidebar';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, API_URL } from '@/lib/api';
 import {
     BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -92,6 +92,17 @@ export default function Ejecutivo() {
         URL.revokeObjectURL(url);
     }
 
+    // Descargar detalle de pólizas (raw data para cruce)
+    function downloadPolizasDetalle(ramoFiltro) {
+        const params = new URLSearchParams({ anio });
+        if (ramoFiltro) params.set('ramo', ramoFiltro.toLowerCase());
+        if (segFiltro) params.set('segmento', segFiltro);
+        if (busqueda) params.set('agente_codigo', busqueda); // Si hay búsqueda por agente, filtrar por ese agente
+        
+        const url = `${API_URL}/exportar/polizas-excel?${params.toString()}`;
+        window.open(url, '_blank');
+    }
+
     // —— Comparativo Table Row (con VS PRESUPUESTO) ——
     function CompRow({ label, ant, act, variacion, isMoney = false, meta }) {
         const renderVal = isMoney ? fmt : v => v?.toLocaleString('es-MX') || '0';
@@ -128,10 +139,18 @@ export default function Ejecutivo() {
             <div className="card" style={{ borderTop: `3px solid ${color}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
                     <span style={{ fontSize: 24 }}>{icon}</span>
-                    <div>
+                    <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{title}</div>
                         <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{data?.anio_anterior} vs {data?.anio_actual}</div>
                     </div>
+                    <button 
+                        onClick={() => downloadPolizasDetalle(title)}
+                        className="btn btn-ghost"
+                        title={`Bajar detalle de pólizas ${title} (Excel)`}
+                        style={{ fontSize: 11, padding: '4px 8px', border: '1px solid var(--border)' }}
+                    >
+                        📥 Bajar Excel
+                    </button>
                 </div>
                 <div className="table-container">
                     <table>
@@ -186,6 +205,13 @@ export default function Ejecutivo() {
                             <option value={10}>Top 10</option>
                             <option value={20}>Top 20</option>
                         </select>
+                        <button 
+                            onClick={() => downloadPolizasDetalle('')}
+                            className="btn btn-primary"
+                            style={{ padding: '7px 14px', fontSize: 13, background: 'var(--grad-blue)', border: 'none' }}
+                        >
+                            📥 Todo (Excel)
+                        </button>
                     </div>
                 </header>
 
