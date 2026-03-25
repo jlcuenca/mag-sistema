@@ -8,6 +8,7 @@ import os
 
 # ── Configuración ──────────────────────────────────────────────────
 UMBRAL_COMISION_BASICA = 0.021   # 2.1% — configurable
+CURRENT_YEAR = date.today().year
 
 # Catálogo de 6 estatus reales (fuente: EJEMPLO ESTATUS.xlsx)
 CATALOGO_ESTATUS = {
@@ -29,6 +30,13 @@ ESTATUS_CUBO_MAP = {
     "POLIZA REHABILITADA":    "REHABILITADA",
     "POLIZA NO TOMADA":       "NO TOMADA",
 }
+
+# Estatus que se consideran "Pagados" para clasificación
+STATUS_PAGADOS = (
+    "PAGADA", "POLIZA PAGADA", "AL CORRIENTE", "POLIZA AL CORRIENTE",
+    "TERMINADA PAGADA", "PAGADA C/REHABILITACION",
+    "CON DERECHO AL SERVICIO", "VIGENTE", "CON DERECHO AL SERVICIO C/REHABILITACION"
+)
 
 # Segmentos con agrupamiento
 SEGMENTOS = {
@@ -68,13 +76,13 @@ def clasificar_poliza(
 
     anio_poliza = int(fecha_inicio[:4])
     # Aceptar múltiples variantes de estatus como "pagada"
-    pagada = status_recibo in ("PAGADA", "POLIZA PAGADA", "AL CORRIENTE", "POLIZA AL CORRIENTE")
+    pagada = status_recibo in STATUS_PAGADOS
 
     # ── GMM (ramo 34) ──
     if ramo_codigo == 34:
         if anio_poliza == anio_analisis and pagada:
             resultado.update({"tipo_poliza": "NUEVA", "es_nueva": True})
-        elif anio_poliza == anio_analisis - 1:
+        elif anio_poliza < anio_analisis:
             resultado.update({"tipo_poliza": "SUBSECUENTE", "es_nueva": False})
 
     # ── VIDA (ramo 11) ──
@@ -84,11 +92,11 @@ def clasificar_poliza(
         resultado["tipo_prima"] = tipo_prima
         resultado["pct_comision"] = round(pct, 6)
 
-        if tipo_prima == "BASICA":
-            if anio_poliza == anio_analisis and pagada:
-                resultado.update({"tipo_poliza": "NUEVA", "es_nueva": True})
-            elif anio_poliza == anio_analisis - 1:
-                resultado.update({"tipo_poliza": "SUBSECUENTE", "es_nueva": False})
+        # Clasificar sin importar si es BASICA o EXCEDENTE para el tipo_poliza
+        if anio_poliza == anio_analisis and pagada:
+            resultado.update({"tipo_poliza": "NUEVA", "es_nueva": True})
+        elif anio_poliza < anio_analisis:
+            resultado.update({"tipo_poliza": "SUBSECUENTE", "es_nueva": False})
 
     return resultado
 
@@ -624,6 +632,7 @@ def flag_nueva_formal(
     prima_acumulada: float = 0,
     ramo_codigo: int = None,
     raw_tipo: str = None,
+    anio_poliza: int = None,
 ) -> int:
     """
     Determina si la póliza cuenta como nueva formalmente.
@@ -636,9 +645,9 @@ def flag_nueva_formal(
     if raw_tipo == "SUBSECUENTE":
         return 0
 
-    current_year = datetime.now().year
-    if anio_aplicacion != current_year and anio_aplicacion != current_year - 1:
-        return 1
+    # Si el año de inicio de vigencia es anterior al año de aplicación, es SUBSECUENTE (0)
+    if anio_poliza and anio_poliza < anio_aplicacion:
+        return 0
 
     ms = (mystatus or "").strip().upper()
 
@@ -802,18 +811,13 @@ def aplicar_reglas_poliza(poliza: dict, ramo_codigo: int = None) -> dict:
     # Fecha de aplicación y derivados
     if not fecha_apli or fecha_apli == "-":
         # Si tiene status PAGADA o mystatus que indica pago, inferir de fecha_inicio
-        pagada_statuses = (
-            "PAGADA", "AL CORRIENTE", "POLIZA PAGADA", "POLIZA AL CORRIENTE",
-            "TERMINADA PAGADA", "PAGADA C/REHABILITACION",
-            "CON DERECHO AL SERVICIO", "VIGENTE",
-        )
         pagada_mystatus = (
             "PAGADA TOTAL", "PAGADA S/FP", "PAGADA", "TERMINADA",
             "TERMINADA PAGADA", "ANTICIPADA",
         )
         ms_upper = ms.strip().upper() if ms else ""
         status_upper = status.strip().upper() if status else ""
-        if status_upper in pagada_statuses or ms_upper in pagada_mystatus:
+        if status_upper in STATUS_PAGADOS or ms_upper in pagada_mystatus:
             fecha_apli = fecha_ini
     _mes_apli = mes_aplicacion(fecha_apli)
     _anio_apli = None
@@ -859,12 +863,28 @@ def aplicar_reglas_poliza(poliza: dict, ramo_codigo: int = None) -> dict:
     _flag_canc = flag_cancelada(ms, _prima_acum)
 
     # Nueva formal
+    _anio_ini_val = int(fecha_ini[:4]) if fecha_ini and len(fecha_ini) >= 4 else None
+    
+    # Auto-clasificar tipo_poliza si falta o para validar
+    _cls = clasificar_poliza(
+        ramo_codigo=ramo_codigo,
+        fecha_inicio=fecha_ini,
+        status_recibo=status,
+        anio_analisis=anio,
+        prima_neta=prima_neta,
+        comision=poliza.get("comision") or 0
+    )
+    _tipo_propuesto = _cls["tipo_poliza"]
+    # Forzar la clasificación calculada si la ley de negocio así lo determina y el dato crudo no existe o es inconsistente
+    _final_tipo = _tipo_propuesto if _tipo_propuesto != "NO_APLICA" else (poliza.get("tipo_poliza") or "NO_APLICA")
+
     _flag_nueva = flag_nueva_formal(
         anio_aplicacion=anio,
         mystatus=ms,
         prima_acumulada=_prima_acum,
         ramo_codigo=ramo_codigo,
-        raw_tipo=poliza.get("tipo_poliza"),
+        raw_tipo=_final_tipo,
+        anio_poliza=_anio_ini_val,
     )
 
     # Equivalencias emitidas
@@ -898,6 +918,7 @@ def aplicar_reglas_poliza(poliza: dict, ramo_codigo: int = None) -> dict:
         "trimestre": _trimestre,
         "flag_pagada": _flag_pag,
         "flag_nueva_formal": _flag_nueva,
+        "tipo_poliza_nuevo": _final_tipo,
         "prima_anual_pesos": _prima_pesos,
         "prima_acumulada_basica": _prima_acum if _prima_acum else None,
         "equivalencias_emitidas": _equiv,
@@ -923,7 +944,7 @@ def aplicar_reglas_batch(polizas: list, ramo_codigo: int = None) -> list:
     # Paso 1: Calcular campos individuales
     resultados = []
     for p in polizas:
-        rc = ramo_codigo
+        rc = ramo_codigo or p.get("ramo_codigo")
         if rc is None:
             ramo_raw = (p.get("ramo_nombre_raw") or p.get("ramo_nombre") or "").upper()
             if "VIDA" in ramo_raw:

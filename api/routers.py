@@ -45,7 +45,7 @@ from .rules import (
 # flag_nueva_formal (reglas de negocio) tiene prioridad sobre tipo_poliza (dato crudo de importación)
 # SQL: usar estas expresiones en CASE WHEN para filtrar nueva/subsecuente
 SQL_ES_NUEVA = "(p.flag_nueva_formal=1 OR (p.flag_nueva_formal IS NULL AND p.tipo_poliza='NUEVA'))"
-SQL_ES_SUBSECUENTE = "(COALESCE(p.flag_nueva_formal,0)=0 OR (p.flag_nueva_formal IS NULL AND p.tipo_poliza='SUBSECUENTE'))"
+SQL_ES_SUBSECUENTE = "(p.flag_nueva_formal=0 OR (p.flag_nueva_formal IS NULL AND p.tipo_poliza='SUBSECUENTE'))"
 
 
 def _es_nueva(p) -> bool:

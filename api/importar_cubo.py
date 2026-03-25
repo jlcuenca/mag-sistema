@@ -8,7 +8,7 @@ Uso:
 import os
 import sys
 import openpyxl
-from datetime import datetime
+from datetime import datetime, date
 
 # Setup path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,8 +20,8 @@ from api.database import (
     Meta, Importacion
 )
 from api.rules import (
-    normalizar_poliza, calcular_mystatus, agrupar_segmento,
-    clasificar_cy, es_reexpedicion, extraer_raiz_poliza
+    normalizar_poliza, calcular_mystatus, es_reexpedicion, agrupar_segmento,
+    clasificar_cy, aplicar_reglas_poliza, aplicar_reglas_batch, STATUS_PAGADOS
 )
 
 # ── Configuración ──────────────────────────────────────────────────
@@ -261,7 +261,7 @@ def main():
             mystatus = calcular_mystatus(None, estatus, detalle_estatus)
 
             # Status simplificado para filtros
-            if "PAGADA" in estatus.upper() or "AL CORRIENTE" in estatus.upper():
+            if any(s in estatus.upper() for s in STATUS_PAGADOS):
                 status_recibo = "PAGADA"
             elif "CANCELADA" in estatus.upper():
                 status_recibo = "CANCELADA"
@@ -274,20 +274,19 @@ def main():
             anio_apli = int(fecha_inicio[:4]) if fecha_inicio and len(fecha_inicio) >= 4 else 2025
             periodo = fecha_inicio[:7] if fecha_inicio and len(fecha_inicio) >= 7 else f"{anio_apli}-01"
 
-            # Reclasificar tipo_poliza basado en año real
-            if anio_apli == 2025:
-                if status_recibo in ("PAGADA", "AL CORRIENTE"):
-                    tipo_final = "NUEVA"
-                    es_nueva_final = True
-                else:
-                    tipo_final = "NUEVA"  # Canceladas del 2025 aún son NUEVA
-                    es_nueva_final = False
-            elif anio_apli == 2024:
-                tipo_final = "SUBSECUENTE"
-                es_nueva_final = False
-            else:
+            # Clasificar utilizando el motor de reglas CY del cubo si está disponible
+            if cy["tipo_poliza"] != "NO_APLICA":
                 tipo_final = cy["tipo_poliza"]
                 es_nueva_final = cy["es_nueva"]
+            else:
+                # Fallback basado en el año de inicio (si inició en el mismo año que el análisis, es Nueva)
+                anio_analisis_actual = date.today().year
+                if anio_apli == anio_analisis_actual:
+                    tipo_final = "NUEVA"
+                    es_nueva_final = (status_recibo == "PAGADA")
+                else:
+                    tipo_final = "SUBSECUENTE"
+                    es_nueva_final = False
 
             try:
                 poliza = Poliza(
