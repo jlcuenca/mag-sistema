@@ -5,8 +5,8 @@ import {
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
     PieChart, Pie, Cell, Legend
 } from 'recharts';
+import { apiFetch } from '@/lib/api';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
 const fmtMoney = (v) => {
@@ -45,47 +45,49 @@ export default function TopAgentes() {
     const [pivotMetrica, setPivotMetrica] = useState('prima');
     const [pivotTipo, setPivotTipo] = useState('');
 
-    const fetchRanking = useCallback(async () => {
+    const fetchRanking = useCallback(() => {
         setLoading(true);
-        try {
-            const params = new URLSearchParams({ anio: String(anio), orden, top_n: String(topN) });
-            if (ramo) params.append('ramo', ramo);
-            if (gama) params.append('gama', gama);
-            if (segmento) params.append('segmento', segmento);
-            if (formaPago) params.append('forma_pago', formaPago);
-            if (trimestre) params.append('trimestre', trimestre);
-            if (tipo) params.append('tipo', tipo);
-            if (lider) params.append('lider', lider);
-            if (moneda) params.append('moneda', moneda);
-            if (nuevaFormal) params.append('nueva_formal', 'true');
+        const params = new URLSearchParams({ anio: String(anio), orden, top_n: String(topN) });
+        if (ramo) params.append('ramo', ramo);
+        if (gama) params.append('gama', gama);
+        if (segmento) params.append('segmento', segmento);
+        if (formaPago) params.append('forma_pago', formaPago);
+        if (trimestre) params.append('trimestre', trimestre);
+        if (tipo) params.append('tipo', tipo);
+        if (lider) params.append('lider', lider);
+        if (moneda) params.append('moneda', moneda);
+        if (nuevaFormal) params.append('nueva_formal', 'true');
 
-            const res = await fetch(`${API}/dashboard/top-agentes-ramo?${params}`);
-            const json = await res.json();
-            setData(json);
-        } catch (e) {
-            console.error('Error fetching ranking:', e);
-        }
-        setLoading(false);
+        apiFetch(`/dashboard/top-agentes-ramo?${params}`)
+            .then(d => {
+                setData(d);
+                setLoading(false);
+            })
+            .catch(err => {
+                console.error("Error al cargar top agentes ramo:", err);
+                setLoading(false);
+            });
     }, [anio, ramo, gama, segmento, formaPago, trimestre, tipo, lider, moneda, nuevaFormal, orden, topN]);
 
     const fetchPivot = useCallback(async () => {
         setLoading(true);
-        try {
-            const params = new URLSearchParams({
-                anio: String(anio),
-                metrica: pivotMetrica,
-                top_n: '30'
-            });
-            if (pivotRamo) params.append('ramo', pivotRamo);
-            if (pivotTipo) params.append('tipo', pivotTipo);
+        const params = new URLSearchParams({
+            anio: String(anio),
+            metrica: pivotMetrica,
+            top_n: '30'
+        });
+        if (pivotRamo) params.append('ramo', pivotRamo);
+        if (pivotTipo) params.append('tipo', pivotTipo);
 
-            const res = await fetch(`${API}/dashboard/pivot-agentes?${params}`);
-            const json = await res.json();
-            setPivotData(json);
-        } catch (e) {
-            console.error('Error fetching pivot:', e);
-        }
-        setLoading(false);
+        apiFetch(`/dashboard/pivot-agentes?${params}`)
+            .then(d => {
+                setPivotData(d); // Changed from setPivot to setPivotData
+                setLoading(false); // Changed from setLoadingPivot to setLoading
+            })
+            .catch(err => {
+                console.error("Error al cargar pivot:", err);
+                setLoading(false); // Changed from setLoadingPivot to setLoading
+            });
     }, [anio, pivotRamo, pivotMetrica, pivotTipo]);
 
     useEffect(() => {
