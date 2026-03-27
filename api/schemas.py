@@ -126,6 +126,11 @@ class KPIs(BaseModel):
     meta_gmm: int = 0
     meta_prima_vida: float = 0
     meta_prima_gmm: float = 0
+    # Metas prorrateadas (Slide 3 PPTX)
+    meta_vida_pro: int = 0
+    meta_gmm_pro: int = 0
+    meta_prima_vida_pro: float = 0
+    meta_prima_gmm_pro: float = 0
     # Año anterior
     polizas_vida_ant: int = 0
     equivalencias_vida_ant: float = 0
@@ -172,6 +177,9 @@ class TopAgenteRamo(BaseModel):
     asegurados: int = 0
     equivalencias: float = 0
     prima_nueva: float = 0
+    # Campos nuevos de Slide 11
+    crecimiento: float = 0.0          # % crecimiento vs año anterior
+    cuota_cartera: float = 0.0        # % de producción sobre el total del ramo
 
 
 class DistribucionGama(BaseModel):

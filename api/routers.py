@@ -247,6 +247,15 @@ def get_dashboard(
         mpv = round(vida_anual.get("prima", 0), 2)
         mpg = round(gmm_anual.get("prima", 0), 2)
 
+    # Pro-rata para metas (Slide 3)
+    # Buscamos el último mes con producción en el año actual
+    ultimo_mes = db.execute(text("""
+        SELECT MAX(CAST(SUBSTR(periodo_aplicacion, 6, 2) AS INTEGER))
+        FROM polizas WHERE anio_aplicacion = :anio AND periodo_aplicacion IS NOT NULL
+    """), {"anio": anio}).scalar() or datetime.now().month
+
+    factor_pro = min(ultimo_mes, 12) / 12.0
+
     kpis = KPIs(
         polizas_nuevas_vida   = len(nuevas_vida),
         equivalencias_vida    = round(equiv_vida_val, 1),
@@ -266,6 +275,11 @@ def get_dashboard(
         meta_gmm              = mg,
         meta_prima_vida       = mpv,
         meta_prima_gmm        = mpg,
+        # Metas prorrateadas
+        meta_vida_pro         = int(mv * factor_pro),
+        meta_gmm_pro          = int(mg * factor_pro),
+        meta_prima_vida_pro   = round(mpv * factor_pro, 2),
+        meta_prima_gmm_pro    = round(mpg * factor_pro, 2),
         # Año anterior
         polizas_vida_ant      = len(ant_nuevas_vida),
         equivalencias_vida_ant= round(sum(p["equivalencias_emitidas"] or 0 for p in ant_nuevas_vida), 1),
@@ -413,16 +427,36 @@ def get_dashboard(
         LIMIT 5
     """), {"anio": anio}).mappings().all()
 
-    top_vida = [
-        TopAgenteRamo(
+    # Calcular Ranking con métricas extras si hay año anterior
+    total_equiv_vida = sum(r["equivalencias"] or 0 for r in top_vida_raw) if top_vida_raw else 1
+    
+    # Cruce con año anterior para crecimiento
+    prod_ant_vida = db.execute(text("""
+        SELECT a.codigo_agente, SUM(p.prima_neta) as prima
+        FROM polizas p JOIN agentes a ON p.agente_id = a.id
+        LEFT JOIN productos pr ON p.producto_id = pr.id
+        WHERE p.anio_aplicacion = :anio_ant AND pr.ramo_codigo = 11 AND """ + SQL_ES_NUEVA + """
+        GROUP BY a.codigo_agente
+    """), {"anio_ant": anio_ant}).mappings().all()
+    map_ant_vida = {r["codigo_agente"]: r["prima"] or 1 for r in prod_ant_vida}
+
+    top_vida = []
+    for r in top_vida_raw:
+        cur = r["prima_nueva"] or 0
+        ant = map_ant_vida.get(r["codigo_agente"], 1)
+        crec = ((cur - ant) / ant) * 100 if ant > 0 else 100.0
+        cuota = ((r["equivalencias"] or 0) / (kpis.equivalencias_vida or 1)) * 100
+
+        top_vida.append(TopAgenteRamo(
             nombre_completo=r["nombre_completo"],
             codigo_agente=r["codigo_agente"],
             oficina=r["oficina"],
             polizas_nuevas=r["polizas_nuevas"] or 0,
             equivalencias=round(r["equivalencias"] or 0, 1),
             prima_nueva=round(r["prima_nueva"] or 0, 2),
-        ) for r in top_vida_raw
-    ]
+            crecimiento=round(crec, 1),
+            cuota_cartera=round(cuota, 1)
+        ))
 
     # ── Distribución por gama GMM ──
     gama_raw = db.execute(text("""

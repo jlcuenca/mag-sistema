@@ -633,15 +633,24 @@ def flag_nueva_formal(
     ramo_codigo: int = None,
     raw_tipo: str = None,
     anio_poliza: int = None,
+    fecha_primer_pago: str = None,
 ) -> int:
     """
     Determina si la póliza cuenta como nueva formalmente.
-    Excel VIDA: =IF(BM2=2025,IF(AM2=$DF$1,0,IF(AM2=$DF$2,0,1)),1)
-      donde $DF$1="CANC/X F.PAGO", $DF$2="CANC/X SUSTITUCION"
-    Excel GMM: =IF(BM2=2025,IF(OR(BD2="CANC/X SUSTITUCION",...,"CANCELADA"),0,
-                  IF(BD2="",IF(CF2=0,0,1),1)),1)
+    Slide 10 PPTX: NUEVA VENTA: PAGÓ POR PRIMERA VEZ EN EL AÑO DE ANÁLISIS.
     """
-    # Si el dato de origen ya indica que es subsecuente, lo respetamos
+    # Si tenemos fecha de primer pago, el año debe coincidir con el año de aplicación
+    if fecha_primer_pago and len(fecha_primer_pago) >= 4:
+        try:
+            anio_pago = int(fecha_primer_pago[:4])
+            if anio_pago == anio_aplicacion:
+                return 1
+            elif anio_pago < anio_aplicacion:
+                return 0
+        except ValueError:
+            pass
+
+    # Fallback a lógica anterior si no hay fecha de pago
     if raw_tipo == "SUBSECUENTE":
         return 0
 
@@ -875,8 +884,14 @@ def aplicar_reglas_poliza(poliza: dict, ramo_codigo: int = None) -> dict:
         comision=poliza.get("comision") or 0
     )
     _tipo_propuesto = _cls["tipo_poliza"]
-    # Forzar la clasificación calculada si la ley de negocio así lo determina y el dato crudo no existe o es inconsistente
-    _final_tipo = _tipo_propuesto if _tipo_propuesto != "NO_APLICA" else (poliza.get("tipo_poliza") or "NO_APLICA")
+    
+    # Para VIDA (ramo 11), el dato crudo de la aseguradora es la fuente más confiable
+    # para distinguir entre NUEVA (1er año) y SUBSECUENTE (2do+ año) incluso si el año coincide.
+    if ramo_codigo == 11 and poliza.get("tipo_poliza") in ("NUEVA", "SUBSECUENTE"):
+        _final_tipo = poliza.get("tipo_poliza")
+    else:
+        # Para otros ramos o si el dato crudo falta, usamos la lógica calculada (basada en años)
+        _final_tipo = _tipo_propuesto if _tipo_propuesto != "NO_APLICA" else (poliza.get("tipo_poliza") or "NO_APLICA")
 
     _flag_nueva = flag_nueva_formal(
         anio_aplicacion=anio,
@@ -885,6 +900,7 @@ def aplicar_reglas_poliza(poliza: dict, ramo_codigo: int = None) -> dict:
         ramo_codigo=ramo_codigo,
         raw_tipo=_final_tipo,
         anio_poliza=_anio_ini_val,
+        fecha_primer_pago=poliza.get("fecha_primer_pago")
     )
 
     # Equivalencias emitidas

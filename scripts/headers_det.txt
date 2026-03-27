@@ -1,0 +1,1 @@
+﻿['poliza', 'agente', 'nombre_com', 'territorio', 'oficina', 'gerencia', 'cc', 'cc_tit', 'nom_agrup', 'ramo', 'cnt', 'pol_vigente', 'MES', 'LAGRGO', 'POLIZAS', None, None, None, None, <openpyxl.worksheet.formula.ArrayFormula object at 0x0000014AA8287CB0>, 'AGENTE', 'MES', 'CNT', 'RAMO', 'mes num']

@@ -397,32 +397,34 @@ export default function Dashboard() {
                                 {ramoFilter !== 'todos' && (
                                     <div style={{ display: 'flex', gap: 16, marginBottom: 16, padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 10 }}>
                                         <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>AVANCE VS PRESUPUESTO</div>
+                                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'flex', justifyContent: 'space-between' }}>
+                                                <span>AVANCE VS PRESUPUESTO (AL PERIODO)</span>
+                                                <span style={{ fontWeight: 700 }}>{ramoFilter === 'vida' ? pct(k.polizas_nuevas_vida, k.meta_vida_pro) : pct(k.polizas_nuevas_gmm, k.meta_gmm_pro)}%</span>
+                                            </div>
                                             <div className="progress-bar" style={{ height: 8 }}>
                                                 <div className={`progress-fill progress-${ramoFilter === 'vida' ? 'indigo' : ramoFilter === 'gmm' ? 'emerald' : 'blue'}`}
-                                                    style={{ width: `${ramoFilter === 'vida' ? pct(k.polizas_nuevas_vida, k.meta_vida) : ramoFilter === 'gmm' ? pct(k.polizas_nuevas_gmm, k.meta_gmm) : pct(k.polizas_nuevas_autos, k.meta_autos)}%` }} />
+                                                    style={{ width: `${ramoFilter === 'vida' ? pct(k.polizas_nuevas_vida, k.meta_vida_pro) : pct(k.polizas_nuevas_gmm, k.meta_gmm_pro)}%` }} />
                                             </div>
-                                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+                                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>
                                                 {ramoFilter === 'vida'
-                                                    ? `${k.polizas_nuevas_vida} / ${k.meta_vida} pólizas (${pct(k.polizas_nuevas_vida, k.meta_vida)}%)`
-                                                    : ramoFilter === 'gmm'
-                                                    ? `${k.polizas_nuevas_gmm} / ${k.meta_gmm} pólizas (${pct(k.polizas_nuevas_gmm, k.meta_gmm)}%)`
-                                                    : `${k.polizas_nuevas_autos || 0} pólizas nuevas autos`
+                                                    ? `${k.polizas_nuevas_vida} / ${k.meta_vida_pro} pólizas (Meta Anual: ${k.meta_vida})`
+                                                    : `${k.polizas_nuevas_gmm} / ${k.meta_gmm_pro} pólizas (Meta Anual: ${k.meta_gmm})`
                                                 }
                                             </div>
                                         </div>
                                         <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>PRIMA VS META</div>
+                                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'flex', justifyContent: 'space-between' }}>
+                                                <span>PRIMA VS META (AL PERIODO)</span>
+                                                <span style={{ fontWeight: 700 }}>{ramoFilter === 'vida' ? pct(k.prima_nueva_vida, k.meta_prima_vida_pro) : pct(k.prima_nueva_gmm, k.meta_prima_gmm_pro)}%</span>
+                                            </div>
                                             <div className="progress-bar" style={{ height: 8 }}>
                                                 <div className={`progress-fill progress-${ramoFilter === 'vida' ? 'indigo' : ramoFilter === 'gmm' ? 'emerald' : 'blue'}`}
-                                                    style={{ width: `${ramoFilter === 'vida' ? pct(k.prima_nueva_vida, k.meta_prima_vida) : ramoFilter === 'gmm' ? pct(k.prima_nueva_gmm, k.meta_prima_gmm) : pct(k.prima_nueva_autos, k.meta_prima_autos)}%` }} />
+                                                    style={{ width: `${ramoFilter === 'vida' ? pct(k.prima_nueva_vida, k.meta_prima_vida_pro) : pct(k.prima_nueva_gmm, k.meta_prima_gmm_pro)}%` }} />
                                             </div>
-                                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+                                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>
                                                 {ramoFilter === 'vida'
-                                                    ? `${fmt(k.prima_nueva_vida)} / ${fmt(k.meta_prima_vida)} (${pct(k.prima_nueva_vida, k.meta_prima_vida)}%)`
-                                                    : ramoFilter === 'gmm'
-                                                    ? `${fmt(k.prima_nueva_gmm)} / ${fmt(k.meta_prima_gmm)} (${pct(k.prima_nueva_gmm, k.meta_prima_gmm)}%)`
-                                                    : `${fmt(k.prima_nueva_autos || 0)} prima nueva autos`
+                                                    ? `${fmt(k.prima_nueva_vida)} / ${fmt(k.meta_prima_vida_pro)} (Meta Anual: ${fmt(k.meta_prima_vida)})`
+                                                    : `${fmt(k.prima_nueva_gmm)} / ${fmt(k.meta_prima_gmm_pro)} (Meta Anual: ${fmt(k.meta_prima_gmm)})`
                                                 }
                                             </div>
                                         </div>
@@ -439,14 +441,14 @@ export default function Dashboard() {
                                                 {(ramoFilter === 'todos' || ramoFilter === 'vida') && <th>Equivalentes</th>}
                                                 {(ramoFilter === 'todos' || ramoFilter === 'gmm') && <th>Asegurados</th>}
                                                 <th>Prima Venta Nueva</th>
-                                                <th>Prima Total</th>
-                                                <th>Participación</th>
+                                                <th>Crecimiento</th>
+                                                <th>Participación / Cuota</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {(data?.top_agentes || []).map((a, i) => {
-                                                const totalPrima = (data?.top_agentes || []).reduce((s, ag) => s + (ag.prima_total || 0), 0);
-                                                const participacion = totalPrima > 0 ? ((a.prima_total || 0) / totalPrima * 100).toFixed(1) : 0;
+                                            {((ramoFilter === 'vida' ? data.top_vida : ramoFilter === 'gmm' ? data.top_gmm : data.top_agentes) || []).map((a, i) => {
+                                                const participacion = a.cuota_cartera || 0;
+                                                const crecimiento = a.crecimiento || 0;
                                                 return (
                                                     <tr key={i}>
                                                         <td>
@@ -477,10 +479,14 @@ export default function Dashboard() {
                                                             </td>
                                                         )}
                                                         <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{fmt(a.prima_nueva || 0)}</td>
-                                                        <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(a.prima_total || 0)}</td>
+                                                        <td>
+                                                            <span style={{ color: crecimiento >= 0 ? 'var(--accent-emerald)' : 'var(--accent-red)', fontWeight: 600 }}>
+                                                                {crecimiento >= 0 ? '▲' : '▼'} {Math.abs(crecimiento).toFixed(1)}%
+                                                            </span>
+                                                        </td>
                                                         <td>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                                <div className="progress-bar" style={{ width: 80, marginTop: 0 }}>
+                                                                <div className="progress-bar" style={{ width: 60, marginTop: 0 }}>
                                                                     <div className="progress-fill progress-blue" style={{ width: `${participacion}%`, height: '100%' }} />
                                                                 </div>
                                                                 <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{participacion}%</span>
