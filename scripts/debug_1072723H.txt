@@ -1,0 +1,116 @@
+﻿[MAG-DB] Conectando a PostgreSQL...
+
+=== [ DATOS DE INSUMO (BD) - POLIZA 1072723H ] ===
+id                            : 424
+poliza_original               : 1072723H
+poliza_estandar               : 1072723H
+version                       : None
+solicitud                     : None
+archivo_pdf                   : None
+agente_id                     : 6
+producto_id                   : 1
+asegurado_nombre              : BORGIO CIBRIAN, ALEJANDRO
+contratante_nombre            : None
+rfc                           : None
+codigo_postal                 : None
+telefono                      : None
+email                         : None
+num_asegurados                : 1
+fecha_emision                 : 2026-01-12
+fecha_inicio                  : 2026-01-12
+fecha_fin                     : 1998-01-12
+moneda                        : UDIS
+prima_total                   : 11608.92
+prima_neta                    : 11608.92
+iva                           : 0.0
+recargo                       : 0.0
+derecho_poliza                : None
+suma_asegurada                : 637488.0
+deducible                     : None
+coaseguro                     : None
+forma_pago                    : ANUAL
+tipo_pago                     : AGENTE R
+status_recibo                 : VIGENTE
+plazo_pago                    : None
+tope                          : None
+zona                          : None
+red                           : None
+tabulador                     : None
+maternidad                    : None
+cobertura                     : None
+gama                          : None
+es_nueva                      : None
+tipo_poliza                   : NUEVA
+tipo_prima                    : BASICA
+pct_comision                  : None
+poliza_padre_id               : None
+es_reexpedicion               : False
+mystatus                      : PAGADA
+periodo_aplicacion            : 2026-01
+anio_aplicacion               : 2026
+fuente                        : CSV_IMPORT
+notas                         : None
+segmento                      : None
+gestion_comercial             : None
+lider_codigo                  : None
+clasificacion_cy              : None
+estatus_cubo                  : None
+estatus_detalle               : None
+nueva_poliza_flag             : None
+neta_total_contrato           : None
+neta_acumulada                : None
+neta_forma_pago               : None
+neta_sin_forma                : None
+neta_cancelacion              : None
+fecha_primer_pago             : None
+fecha_ultimo_pago             : None
+anio_conf                     : None
+mes_conf                      : None
+largo_poliza                  : 8
+raiz_poliza_6                 : 107272
+terminacion                   : 3H
+num_reexpediciones            : 2
+primer_anio                   : PRIMER A╤O 2026
+id_compuesto                  : 1072723H2026-01-12
+fecha_aplicacion              : 2026-01-12
+mes_aplicacion                : ENERO
+pendientes_pago               : 
+trimestre                     : Q1
+prima_acumulada_basica        : 100595.78
+flag_pagada                   : 1
+flag_nueva_formal             : 1
+prima_anual_pesos             : 99372.36
+equivalencias_emitidas        : 2.0
+equivalencias_pagadas         : 2.0
+flag_cancelada                : 1
+prima_proporcional            : 11979.13
+condicional_prima             : OK
+contratante_id                : None
+created_at                    : None
+updated_at                    : 2026-03-25T17:23:40.743587
+ramo_codigo                   : 11
+ramo_nombre                   : VIDA
+plan                          : VIDA Y AHORRO
+agente_nombre                 : Agente 644717
+
+=== [ REGLAS DE NEGOCIO CALCULADAS ] ===
+largo_poliza                  : 8
+raiz_poliza_6                 : 107272
+terminacion                   : 3H
+id_compuesto                  : 1072723H2026-01-12
+es_reexpedicion               : False
+primer_anio                   : PRIMER A╤O 2026
+fecha_aplicacion              : 2026-01-12
+mes_aplicacion                : ENERO
+pendientes_pago               : 
+trimestre                     : Q1
+flag_pagada                   : 1
+flag_nueva_formal             : 1
+tipo_poliza_nuevo             : NUEVA
+prima_anual_pesos             : 99372.36
+prima_acumulada_basica        : 100595.78
+equivalencias_emitidas        : 2.0
+equivalencias_pagadas         : 2.0
+flag_cancelada                : 1
+prima_proporcional            : 12523.64
+condicional_prima             : OK

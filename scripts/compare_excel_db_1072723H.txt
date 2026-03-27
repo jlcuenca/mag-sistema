@@ -1,0 +1,62 @@
+﻿Reading Excel: ref\Reporte 08 FEBRERO 2026 BASE VIDA Y GMM VF2 OK ULTIMO (1).xlsm ...
+Using policy column: POLIZA
+
+=== [ EXCEL VALUES (Row identified) ] ===
+FECPERINI                     : nan
+IDENT POLIZAS REEXPEDIDAS     : 2
+LARGO                         : 8
+POLIZA CON 6 DE LARGO         : 107272
+TERMINACI╙N                   : 3H
+PRIMER A╤O                    : PRIMER A╤O 2026
+FEC APLI                      : 2026-01-23 00:00:00
+MES APLI                      : ENERO
+A╤O APLI                      : 2026.0
+NUMERO DEL PROMOTOR           : 56991.0
+NOMBRE DEL PROMOTOR           : JANEM CONSULTORIA EN ADMON DE RIESGOS S.C.
+AGENTE.1                      : JOAQUIN SALVADOR ANGULO NEME
+SEGMENTO                      : ALFA INTEGRAL
+SEGMENTO AGRUPADO             : ALFA
+LIDER                         : ALFA/OSWALDO
+ID.1                          : 1072723H46034
+FECAPLI                       : 46045
+PENDIENTES DE PAGO EN 2025    : -
+PRIMER A╤O.1                  : -
+MES APLI.1                    : -
+A╤O APLI.1                    : -
+POLIZA.1                      : -
+TRISMESTRE                    : Primer trimestre
+AUOMAICO VS INDICADORES       : nan
+AUOMAICO VS IND ASG           : nan
+AUTOMATICO VS DATA CONCENTRADO: 1072728H
+ESTATUS                       : True
+PRIMA ACUMULADA BASICA        : 100595.78
+NOSOL                         : 1803245
+CONSECUTIVO SOL               : 161.0
+PAGADA/NO PAGADA              : 1
+NUEVA NO NUEVA FORM           : 1
+NUMERO DE MES                 : 0
+VALIDACI╙N DE DATOS MANUALES  : nan
+PRIMA ANUAL EMITIDA EN PESOS  : 99372.3552
+EQUIV                         : 2.0
+EQUIV PAG                     : 2.0
+CANCELADA                     : 1
+DATOS FIJOS                   : nan
+Equiv Pol 2.0                 : 0.0
+EXISTE EN AUT GABY            : 1072723H
+ADRI 2                        : 1072723H
+VALIDA EQ                     : 2.0
+dif                           : True
+COMENTARIOS ADRI              : nan
+CON PAGO                      : nan
+EN AUTOMATICO                 : nan
+Validador                     : nan
+Unnamed: 104                  : nan
+Unnamed: 105                  : nan
+Unnamed: 106                  : nan
+Unnamed: 107                  : nan
+A╤O APLI.2                    : nan
+MES APLI.2                    : nan
+AGENTE.2                      : nan
+Suma de EQUIV                 : nan
+Suma de EQUIV PAG             : nan
+Suma de PRIMA ACUMULADA BASICA: nan

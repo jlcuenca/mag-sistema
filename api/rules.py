@@ -818,16 +818,23 @@ def aplicar_reglas_poliza(poliza: dict, ramo_codigo: int = None) -> dict:
     _reexp = es_reexpedicion(pol_num)
 
     # Fecha de aplicación y derivados
-    if not fecha_apli or fecha_apli == "-":
+    # Prioridad: 1. fecha_aplicacion explícita, 2. fecha_primer_pago, 3. fecha_inicio (si está pagada)
+    if not fecha_apli or fecha_apli == "-" or fecha_apli == "":
+        fecha_apli = poliza.get("fecha_primer_pago") or ""
+    
+    if not fecha_apli or fecha_apli == "-" or fecha_apli == "":
         # Si tiene status PAGADA o mystatus que indica pago, inferir de fecha_inicio
         pagada_mystatus = (
             "PAGADA TOTAL", "PAGADA S/FP", "PAGADA", "TERMINADA",
-            "TERMINADA PAGADA", "ANTICIPADA",
+            "TERMINADA PAGADA", "ANTICIPADA", "AL CORRIENTE"
         )
         ms_upper = ms.strip().upper() if ms else ""
         status_upper = status.strip().upper() if status else ""
         if status_upper in STATUS_PAGADOS or ms_upper in pagada_mystatus:
             fecha_apli = fecha_ini
+    
+    _periodo_apli = fecha_apli[:7] if fecha_apli and len(fecha_apli) >= 7 else poliza.get("periodo_aplicacion")
+    _anio_apli = int(fecha_apli[:4]) if fecha_apli and len(fecha_apli) >= 4 else poliza.get("anio_aplicacion")
     _mes_apli = mes_aplicacion(fecha_apli)
     _anio_apli = None
     if fecha_apli and fecha_apli != "-" and len(fecha_apli) >= 4:
@@ -942,6 +949,8 @@ def aplicar_reglas_poliza(poliza: dict, ramo_codigo: int = None) -> dict:
         "flag_cancelada": _flag_canc,
         "prima_proporcional": _prima_prop,
         "condicional_prima": _cond_prima,
+        "periodo_aplicacion": _periodo_apli,
+        "anio_aplicacion": _anio_apli,
     }
 
 
