@@ -30,7 +30,8 @@ from .schemas import (
     FinanzasResponse, ResumenFinanciero, IngresoEgresoMensual,
     ProyeccionCierre, PresupuestoMensualComp, TendenciaAnual,
     ContratanteOut, ContratanteCreate,
-    SolicitudOut, SolicitudCreate, SolicitudUpdate, SolicitudesResponse, PipelineResumen,
+    SolicitudOut, SolicitudCreate, SolicitudUpdate, SolicitudesResponse,
+    PipelineResumen, PipelineFunnel, EtapaOut, TrazabilidadResponse,
     DistribucionOut, DistribucionCreate,
     ConfiguracionItem, ConfiguracionUpdate, ConfiguracionResponse,
 )
@@ -2909,78 +2910,388 @@ def update_contratante(contratante_id: int, data: ContratanteCreate, db: Session
 
 
 # ═══════════════════════════════════════════════════════════════════
-# SOLICITUDES — Pipeline de emisión (Fase 5.2)
+# SOLICITUDES — Entidad Raíz v2.0 (Pipeline de emisión)
 # ═══════════════════════════════════════════════════════════════════
 router_solicitudes = APIRouter(prefix="/solicitudes", tags=["Solicitudes"])
+
+
+def _solicitud_to_out(s, db) -> dict:
+    """Convierte un ORM Solicitud a dict para SolicitudOut."""
+    ag = db.query(Agente).filter(Agente.id == s.agente_id).first() if s.agente_id else None
+    if not ag and s.idagente:
+        ag = db.query(Agente).filter(Agente.codigo_agente == s.idagente).first()
+    return {
+        "id": s.id,
+        "nosol": s.nosol,
+        "folio": s.folio,
+        "nomramo": s.nomramo,
+        "contratante_nombre": s.contratante_nombre,
+        "fecrecepcion": s.fecrecepcion,
+        "ano_recepcion": s.ano_recepcion,
+        "mes_recepcion": s.mes_recepcion,
+        "idagente": s.idagente,
+        "nuevo": s.nuevo,
+        "numsolicitantes": s.numsolicitantes,
+        "ramo": s.ramo,
+        "plan": s.plan,
+        "forma_pago": getattr(s, "forma_pago", None),
+        "prima_estimada": s.prima_estimada,
+        "territorio": getattr(s, "territorio", None),
+        "zona": getattr(s, "zona", None),
+        "ramo_normalizado": s.ramo_normalizado,
+        "estado": s.estado,
+        "dias_tramite": s.dias_tramite,
+        "alerta_atorada": s.alerta_atorada,
+        "tasa_conversion_agente": s.tasa_conversion_agente,
+        "sla_cumplido": s.sla_cumplido,
+        "tipo_rechazo": s.tipo_rechazo,
+        "ultima_etapa": s.ultima_etapa,
+        "ultima_subetapa": s.ultima_subetapa,
+        "fecha_ultima_etapa": s.fecha_ultima_etapa,
+        "observaciones_etapa": s.observaciones_etapa,
+        "poliza_numero": s.poliza_numero,
+        "agente_id": s.agente_id,
+        "agente_nombre": ag.nombre_completo if ag else None,
+        "created_at": s.created_at,
+        "updated_at": s.updated_at,
+    }
 
 
 @router_solicitudes.get("", response_model=SolicitudesResponse)
 def list_solicitudes(
     estado: Optional[str] = None,
+    ramo: Optional[str] = None,
     agente_id: Optional[int] = None,
-    db: Session = Depends(get_db)
+    anio: Optional[int] = None,
+    alerta: Optional[bool] = None,
+    limit: int = Query(200, le=5000),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
 ):
+    """Lista solicitudes con filtros y pipeline stats."""
     query = db.query(Solicitud)
     if estado:
         query = query.filter(Solicitud.estado == estado.upper())
+    if ramo:
+        ramo_norm = ramo.upper()
+        if ramo_norm in ("VIDA", "GMM"):
+            query = query.filter(Solicitud.ramo_normalizado == ramo_norm)
+        else:
+            query = query.filter(Solicitud.nomramo.ilike(f"%{ramo}%"))
     if agente_id:
         query = query.filter(Solicitud.agente_id == agente_id)
-    sols = query.order_by(Solicitud.created_at.desc()).all()
+    if anio:
+        query = query.filter(Solicitud.ano_recepcion == anio)
+    if alerta:
+        query = query.filter(Solicitud.alerta_atorada == 1)
 
-    sol_list = []
-    for s in sols:
-        ag = db.query(Agente).get(s.agente_id) if s.agente_id else None
-        ct = db.query(Contratante).get(s.contratante_id) if s.contratante_id else None
-        sol_list.append(SolicitudOut(
-            id=s.id, folio=s.folio, agente_id=s.agente_id,
-            contratante_id=s.contratante_id, ramo=s.ramo, plan=s.plan,
-            suma_asegurada=s.suma_asegurada, prima_estimada=s.prima_estimada,
-            estado=s.estado, fecha_solicitud=s.fecha_solicitud,
-            poliza_id=s.poliza_id, fecha_emision=s.fecha_emision,
-            fecha_pago=s.fecha_pago, notas=s.notas,
-            agente_nombre=ag.nombre_completo if ag else None,
-            contratante_nombre=ct.nombre if ct else None,
-            created_at=s.created_at, updated_at=s.updated_at,
-        ))
+    total_q = query.count()
+    sols = query.order_by(Solicitud.fecrecepcion.desc()).offset(offset).limit(limit).all()
 
-    # Pipeline stats
-    all_sols = db.query(Solicitud).all()
+    sol_list = [SolicitudOut(**_solicitud_to_out(s, db)) for s in sols]
+
+    # Pipeline stats (sobre TODAS las solicitudes, sin paginación)
+    all_stats = db.execute(text("""
+        SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN estado = 'TRAMITE' THEN 1 ELSE 0 END) as tramite,
+            SUM(CASE WHEN estado = 'EMITIDA' THEN 1 ELSE 0 END) as emitida,
+            SUM(CASE WHEN estado = 'PAGADA' THEN 1 ELSE 0 END) as pagada,
+            SUM(CASE WHEN estado = 'RECHAZADA' THEN 1 ELSE 0 END) as rechazada,
+            SUM(CASE WHEN estado = 'CANCELADA' THEN 1 ELSE 0 END) as cancelada,
+            SUM(CASE WHEN alerta_atorada = 1 THEN 1 ELSE 0 END) as atoradas,
+            AVG(CASE WHEN dias_tramite >= 0 THEN dias_tramite END) as dias_prom,
+            SUM(COALESCE(prima_estimada, 0)) as prima_est,
+            SUM(CASE WHEN ramo_normalizado = 'VIDA' THEN 1 ELSE 0 END) as vida,
+            SUM(CASE WHEN ramo_normalizado = 'GMM' THEN 1 ELSE 0 END) as gmm
+        FROM solicitudes
+    """)).mappings().first()
+
+    total = all_stats["total"] or 0
+    emitida = all_stats["emitida"] or 0
+    pagada = all_stats["pagada"] or 0
+    tasa = round(((emitida + pagada) / total) * 100, 1) if total > 0 else 0
+
+    # SLA
+    sla_stats = db.execute(text("""
+        SELECT COUNT(*) as total,
+               SUM(CASE WHEN sla_cumplido = 1 THEN 1 ELSE 0 END) as cumple
+        FROM solicitudes WHERE sla_cumplido IS NOT NULL
+    """)).mappings().first()
+    total_sla = sla_stats["total"] or 1
+    pct_sla = round((sla_stats["cumple"] or 0) / total_sla * 100, 1)
+
     pipeline = PipelineResumen(
-        total=len(all_sols),
-        tramite=sum(1 for s in all_sols if s.estado == "TRAMITE"),
-        emitida=sum(1 for s in all_sols if s.estado == "EMITIDA"),
-        pagada=sum(1 for s in all_sols if s.estado == "PAGADA"),
-        rechazada=sum(1 for s in all_sols if s.estado == "RECHAZADA"),
-        cancelada=sum(1 for s in all_sols if s.estado == "CANCELADA"),
-        prima_estimada_total=sum(s.prima_estimada or 0 for s in all_sols),
-        prima_pagada_total=sum(s.prima_estimada or 0 for s in all_sols if s.estado == "PAGADA"),
+        total=total,
+        tramite=all_stats["tramite"] or 0,
+        emitida=emitida,
+        pagada=pagada,
+        rechazada=all_stats["rechazada"] or 0,
+        cancelada=all_stats["cancelada"] or 0,
+        atoradas=all_stats["atoradas"] or 0,
+        tasa_conversion=tasa,
+        dias_promedio_tramite=round(all_stats["dias_prom"] or 0, 1),
+        pct_sla_cumplido=pct_sla,
+        por_ramo={"vida": all_stats["vida"] or 0, "gmm": all_stats["gmm"] or 0},
+        prima_estimada_total=all_stats["prima_est"] or 0,
     )
 
-    return SolicitudesResponse(solicitudes=sol_list, pipeline=pipeline)
+    funnel = PipelineFunnel(
+        ingresadas=total,
+        en_proceso=all_stats["tramite"] or 0,
+        emitidas=emitida,
+        pagadas=pagada,
+        rechazadas=all_stats["rechazada"] or 0,
+        canceladas=all_stats["cancelada"] or 0,
+    )
+
+    return SolicitudesResponse(solicitudes=sol_list, pipeline=pipeline, funnel=funnel)
+
+
+@router_solicitudes.get("/pipeline-stats")
+def get_pipeline_stats(
+    anio: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    """KPIs del pipeline de solicitudes — para dashboard cards."""
+    filtro_anio = "AND ano_recepcion = :anio" if anio else ""
+    params = {"anio": anio} if anio else {}
+
+    stats = db.execute(text(f"""
+        SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN estado = 'TRAMITE' THEN 1 ELSE 0 END) as tramite,
+            SUM(CASE WHEN estado = 'EMITIDA' THEN 1 ELSE 0 END) as emitida,
+            SUM(CASE WHEN estado = 'PAGADA' THEN 1 ELSE 0 END) as pagada,
+            SUM(CASE WHEN estado = 'RECHAZADA' THEN 1 ELSE 0 END) as rechazada,
+            SUM(CASE WHEN estado = 'CANCELADA' THEN 1 ELSE 0 END) as cancelada,
+            SUM(CASE WHEN alerta_atorada = 1 THEN 1 ELSE 0 END) as atoradas,
+            AVG(CASE WHEN dias_tramite >= 0 THEN dias_tramite END) as dias_prom,
+            SUM(CASE WHEN ramo_normalizado = 'VIDA' THEN 1 ELSE 0 END) as vida,
+            SUM(CASE WHEN ramo_normalizado = 'GMM' THEN 1 ELSE 0 END) as gmm
+        FROM solicitudes WHERE 1=1 {filtro_anio}
+    """), params).mappings().first()
+
+    total = stats["total"] or 0
+    emitida = stats["emitida"] or 0
+    pagada = stats["pagada"] or 0
+
+    # Por mes
+    mensual = db.execute(text(f"""
+        SELECT mes_recepcion as mes, COUNT(*) as total,
+               SUM(CASE WHEN estado = 'EMITIDA' THEN 1 ELSE 0 END) as emitidas,
+               SUM(CASE WHEN estado = 'RECHAZADA' THEN 1 ELSE 0 END) as rechazadas
+        FROM solicitudes
+        WHERE mes_recepcion IS NOT NULL {filtro_anio}
+        GROUP BY mes_recepcion ORDER BY mes_recepcion
+    """), params).mappings().all()
+
+    # Por agente (top 10)
+    top_agentes = db.execute(text(f"""
+        SELECT s.idagente, a.nombre_completo,
+               COUNT(*) as total,
+               SUM(CASE WHEN s.estado IN ('EMITIDA','PAGADA') THEN 1 ELSE 0 END) as emitidas,
+               ROUND(CAST(SUM(CASE WHEN s.estado IN ('EMITIDA','PAGADA') THEN 1 ELSE 0 END) AS FLOAT) / COUNT(*) * 100, 1) as tasa
+        FROM solicitudes s
+        LEFT JOIN agentes a ON s.agente_id = a.id
+        WHERE s.idagente IS NOT NULL {filtro_anio}
+        GROUP BY s.idagente, a.nombre_completo
+        ORDER BY total DESC LIMIT 10
+    """), params).mappings().all()
+
+    return {
+        "total": total,
+        "tramite": stats["tramite"] or 0,
+        "emitida": emitida,
+        "pagada": pagada,
+        "rechazada": stats["rechazada"] or 0,
+        "cancelada": stats["cancelada"] or 0,
+        "atoradas": stats["atoradas"] or 0,
+        "tasa_conversion": round(((emitida + pagada) / total) * 100, 1) if total > 0 else 0,
+        "dias_promedio": round(stats["dias_prom"] or 0, 1),
+        "por_ramo": {"vida": stats["vida"] or 0, "gmm": stats["gmm"] or 0},
+        "funnel": {
+            "ingresadas": total,
+            "en_proceso": stats["tramite"] or 0,
+            "emitidas": emitida,
+            "pagadas": pagada,
+            "rechazadas": stats["rechazada"] or 0,
+            "canceladas": stats["cancelada"] or 0,
+        },
+        "mensual": [dict(r) for r in mensual],
+        "top_agentes": [dict(r) for r in top_agentes],
+    }
+
+
+@router_solicitudes.get("/alertas")
+def get_alertas(db: Session = Depends(get_db)):
+    """Solicitudes atoradas (>15 días sin movimiento)."""
+    atoradas = db.query(Solicitud).filter(
+        Solicitud.alerta_atorada == 1
+    ).order_by(Solicitud.fecha_ultima_etapa.asc()).all()
+
+    return {
+        "total_atoradas": len(atoradas),
+        "solicitudes": [_solicitud_to_out(s, db) for s in atoradas],
+    }
+
+
+@router_solicitudes.get("/{nosol}/trazabilidad", response_model=TrazabilidadResponse)
+def get_trazabilidad(nosol: str, db: Session = Depends(get_db)):
+    """Trazabilidad completa: Solicitud -> Poliza -> Pagos."""
+    # Use raw SQL to avoid ORM relationship issues
+    sol_row = db.execute(text("""
+        SELECT s.*, a.nombre_completo as agente_nombre
+        FROM solicitudes s
+        LEFT JOIN agentes a ON s.agente_id = a.id
+        WHERE s.nosol = :nosol
+    """), {"nosol": nosol}).mappings().first()
+
+    if not sol_row:
+        try:
+            sol_row = db.execute(text("""
+                SELECT s.*, a.nombre_completo as agente_nombre
+                FROM solicitudes s
+                LEFT JOIN agentes a ON s.agente_id = a.id
+                WHERE s.id = :sid
+            """), {"sid": int(nosol)}).mappings().first()
+        except (ValueError, TypeError):
+            pass
+    if not sol_row:
+        raise HTTPException(404, f"Solicitud '{nosol}' no encontrada")
+
+    sol_dict = dict(sol_row)
+    sol_out = SolicitudOut(
+        id=sol_dict["id"], nosol=sol_dict.get("nosol"), folio=sol_dict.get("folio"),
+        nomramo=sol_dict.get("nomramo"), contratante_nombre=sol_dict.get("contratante_nombre"),
+        fecrecepcion=sol_dict.get("fecrecepcion"), ano_recepcion=sol_dict.get("ano_recepcion"),
+        mes_recepcion=sol_dict.get("mes_recepcion"), idagente=sol_dict.get("idagente"),
+        nuevo=sol_dict.get("nuevo"), numsolicitantes=sol_dict.get("numsolicitantes"),
+        ramo=sol_dict.get("ramo"), plan=sol_dict.get("plan"),
+        forma_pago=sol_dict.get("forma_pago"), prima_estimada=sol_dict.get("prima_estimada"),
+        territorio=sol_dict.get("territorio"), zona=sol_dict.get("zona"),
+        ramo_normalizado=sol_dict.get("ramo_normalizado"), estado=sol_dict.get("estado"),
+        dias_tramite=sol_dict.get("dias_tramite"), alerta_atorada=sol_dict.get("alerta_atorada"),
+        tasa_conversion_agente=sol_dict.get("tasa_conversion_agente"),
+        sla_cumplido=sol_dict.get("sla_cumplido"), tipo_rechazo=sol_dict.get("tipo_rechazo"),
+        ultima_etapa=sol_dict.get("ultima_etapa"), ultima_subetapa=sol_dict.get("ultima_subetapa"),
+        fecha_ultima_etapa=sol_dict.get("fecha_ultima_etapa"),
+        observaciones_etapa=sol_dict.get("observaciones_etapa"),
+        poliza_numero=sol_dict.get("poliza_numero"), agente_id=sol_dict.get("agente_id"),
+        agente_nombre=sol_dict.get("agente_nombre"),
+        created_at=sol_dict.get("created_at"), updated_at=sol_dict.get("updated_at"),
+    )
+
+    # Etapas (timeline)
+    etapas_raw = db.execute(text("""
+        SELECT id, nosol, etapa, subetapa, fecetapa, observaciones, dias_tramite
+        FROM etapas_solicitudes
+        WHERE nosol = :nosol ORDER BY fecetapa
+    """), {"nosol": sol_dict.get("nosol")}).mappings().all()
+
+    etapas_out = [EtapaOut(**dict(e)) for e in etapas_raw]
+
+    # Poliza vinculada
+    poliza_data = None
+    pagos_data = []
+    resumen_pagos = None
+
+    pol_num = sol_dict.get("poliza_numero")
+    if pol_num:
+        pol = db.execute(text("""
+            SELECT p.id, p.poliza_original, p.poliza_estandar, p.asegurado_nombre,
+                   p.contratante_nombre, p.fecha_inicio, p.fecha_fin,
+                   p.prima_neta, p.prima_total, p.forma_pago, p.moneda,
+                   p.mystatus, p.tipo_poliza, p.gama,
+                   pr.ramo_nombre, pr.plan,
+                   a.nombre_completo as agente_nombre
+            FROM polizas p
+            LEFT JOIN productos pr ON p.producto_id = pr.id
+            LEFT JOIN agentes a ON p.agente_id = a.id
+            WHERE p.poliza_estandar = :pol OR p.poliza_original = :pol
+            LIMIT 1
+        """), {"pol": pol_num}).mappings().first()
+
+        if pol:
+            poliza_data = dict(pol)
+            pagos_raw = db.execute(text("""
+                SELECT poliza_numero, poliza_match, fecha_aplicacion,
+                       prima_neta, comision, comision_total,
+                       moneda, ramo, anio_aplicacion, periodo_aplicacion
+                FROM pagos
+                WHERE poliza_match = :pol OR poliza_numero = :pol_orig
+                ORDER BY fecha_aplicacion DESC
+                LIMIT 50
+            """), {"pol": pol["poliza_estandar"], "pol_orig": pol["poliza_original"]}).mappings().all()
+            pagos_data = [dict(p) for p in pagos_raw]
+
+            if pagos_data:
+                resumen_pagos = {
+                    "total_pagos": len(pagos_data),
+                    "prima_pagada_total": sum(p.get("prima_neta") or 0 for p in pagos_data),
+                    "ultimo_pago": pagos_data[0].get("fecha_aplicacion") if pagos_data else None,
+                }
+
+    return TrazabilidadResponse(
+        solicitud=sol_out,
+        etapas=etapas_out,
+        poliza=poliza_data,
+        pagos=pagos_data,
+        resumen_pagos=resumen_pagos,
+    )
+
+
+@router_solicitudes.get("/{nosol}/etapas")
+def get_etapas(nosol: str, db: Session = Depends(get_db)):
+    """Timeline de etapas de una solicitud."""
+    etapas = db.query(EtapaSolicitud).filter(
+        EtapaSolicitud.nosol == nosol
+    ).order_by(EtapaSolicitud.fecetapa).all()
+
+    return {
+        "nosol": nosol,
+        "total_etapas": len(etapas),
+        "etapas": [{
+            "id": e.id,
+            "etapa": e.etapa,
+            "subetapa": e.subetapa,
+            "fecetapa": e.fecetapa,
+            "observaciones": e.observaciones,
+            "dias_tramite": e.dias_tramite,
+        } for e in etapas],
+    }
 
 
 @router_solicitudes.post("", response_model=SolicitudOut, status_code=201)
 def create_solicitud(data: SolicitudCreate, db: Session = Depends(get_db)):
     from datetime import datetime
-    # Auto-generate folio if not provided
     folio = data.folio
     if not folio:
         count = db.query(Solicitud).count()
         folio = f"SOL-{datetime.now().strftime('%Y%m')}-{count + 1:04d}"
 
-    s = Solicitud(**data.model_dump(exclude={"folio"}), folio=folio)
-    if not s.fecha_solicitud:
-        s.fecha_solicitud = datetime.now().strftime("%Y-%m-%d")
+    s = Solicitud(
+        folio=folio,
+        nosol=data.nosol or folio,
+        agente_id=data.agente_id,
+        contratante_id=data.contratante_id,
+        ramo=data.ramo,
+        plan=data.plan,
+        suma_asegurada=data.suma_asegurada,
+        prima_estimada=data.prima_estimada,
+        estado=data.estado or "TRAMITE",
+        fecha_solicitud=data.fecha_solicitud or datetime.now().strftime("%Y-%m-%d"),
+        notas=data.notas,
+    )
+    # Aplicar reglas
+    from .rules_solicitudes import normalizar_ramo
+    if data.ramo:
+        s.ramo_normalizado = normalizar_ramo(data.ramo)
+
     db.add(s)
     db.commit()
     db.refresh(s)
-    return SolicitudOut(
-        id=s.id, folio=s.folio, agente_id=s.agente_id,
-        contratante_id=s.contratante_id, ramo=s.ramo, plan=s.plan,
-        suma_asegurada=s.suma_asegurada, prima_estimada=s.prima_estimada,
-        estado=s.estado, fecha_solicitud=s.fecha_solicitud,
-        created_at=s.created_at,
-    )
+    return SolicitudOut(**_solicitud_to_out(s, db))
 
 
 @router_solicitudes.put("/{solicitud_id}", response_model=SolicitudOut)
@@ -2995,19 +3306,7 @@ def update_solicitud(solicitud_id: int, data: SolicitudUpdate, db: Session = Dep
     s.updated_at = datetime.now().isoformat()
     db.commit()
     db.refresh(s)
-    ag = db.query(Agente).get(s.agente_id) if s.agente_id else None
-    ct = db.query(Contratante).get(s.contratante_id) if s.contratante_id else None
-    return SolicitudOut(
-        id=s.id, folio=s.folio, agente_id=s.agente_id,
-        contratante_id=s.contratante_id, ramo=s.ramo, plan=s.plan,
-        suma_asegurada=s.suma_asegurada, prima_estimada=s.prima_estimada,
-        estado=s.estado, fecha_solicitud=s.fecha_solicitud,
-        poliza_id=s.poliza_id, fecha_emision=s.fecha_emision,
-        fecha_pago=s.fecha_pago, notas=s.notas,
-        agente_nombre=ag.nombre_completo if ag else None,
-        contratante_nombre=ct.nombre if ct else None,
-        created_at=s.created_at, updated_at=s.updated_at,
-    )
+    return SolicitudOut(**_solicitud_to_out(s, db))
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -234,8 +234,8 @@ class Poliza(Base):
     producto = relationship("Producto", back_populates="polizas")
     recibos = relationship("Recibo", back_populates="poliza")
     contratante_rel = relationship("Contratante", back_populates="polizas")
-    solicitud_rel = relationship("Solicitud", back_populates="poliza_rel",
-                                 foreign_keys=[solicitud_id])
+    solicitud_rel = relationship("Solicitud", foreign_keys=[solicitud_id],
+                                 viewonly=True, uselist=False)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -571,6 +571,7 @@ class Solicitud(Base):
 
     # ── Vinculaciones ───────────────────────────────────────────
     poliza_numero = Column(String(30))                           # Póliza emitida (o NULL)
+    poliza_id = Column(Integer)                                  # Legacy (no FK)
     agente_id = Column(Integer, ForeignKey("agentes.id"))
     contratante_id = Column(Integer, ForeignKey("contratantes.id"))
 
@@ -586,10 +587,9 @@ class Solicitud(Base):
     updated_at = Column(String(30), default=lambda: datetime.now().isoformat())
 
     # ── Relaciones ──────────────────────────────────────────────
-    poliza_rel = relationship("Poliza", back_populates="solicitud_rel",
-                              foreign_keys="[Poliza.solicitud_id]")
-    agente_rel = relationship("Agente")
-    contratante_rel = relationship("Contratante", back_populates="solicitudes")
+    agente_rel = relationship("Agente", foreign_keys=[agente_id])
+    contratante_rel = relationship("Contratante", back_populates="solicitudes",
+                                   foreign_keys=[contratante_id])
     etapas = relationship("EtapaSolicitud", back_populates="solicitud_rel",
                           order_by="EtapaSolicitud.fecetapa",
                           foreign_keys="[EtapaSolicitud.solicitud_id]")

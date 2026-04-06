@@ -622,10 +622,13 @@ class ContratanteOut(ContratanteBase):
     model_config = {"from_attributes": True}
 
 
-# ── Solicitud (Fase 5.2) ─────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════
+# SOLICITUDES — Entidad Raíz v2.0
+# ══════════════════════════════════════════════════════════════════
 
 class SolicitudBase(BaseModel):
     folio: Optional[str] = None
+    nosol: Optional[str] = None
     agente_id: Optional[int] = None
     contratante_id: Optional[int] = None
     ramo: Optional[str] = None
@@ -645,19 +648,62 @@ class SolicitudUpdate(BaseModel):
     estado: Optional[str] = None
     fecha_emision: Optional[str] = None
     fecha_pago: Optional[str] = None
-    poliza_id: Optional[int] = None
     notas: Optional[str] = None
 
 
-class SolicitudOut(SolicitudBase):
+class SolicitudOut(BaseModel):
+    """Solicitud con campos del Concentrado AXA + reglas de negocio."""
     id: int
-    poliza_id: Optional[int] = None
-    fecha_emision: Optional[str] = None
-    fecha_pago: Optional[str] = None
-    agente_nombre: Optional[str] = None
+    nosol: Optional[str] = None
+    folio: Optional[str] = None
+    # Datos crudos
+    nomramo: Optional[str] = None
     contratante_nombre: Optional[str] = None
+    fecrecepcion: Optional[str] = None
+    ano_recepcion: Optional[int] = None
+    mes_recepcion: Optional[int] = None
+    idagente: Optional[str] = None
+    nuevo: Optional[int] = None
+    numsolicitantes: Optional[int] = None
+    # Concentrado
+    ramo: Optional[str] = None
+    plan: Optional[str] = None
+    forma_pago: Optional[str] = None
+    prima_estimada: Optional[float] = None
+    territorio: Optional[str] = None
+    zona: Optional[str] = None
+    # Calculados
+    ramo_normalizado: Optional[str] = None
+    estado: Optional[str] = "TRAMITE"
+    dias_tramite: Optional[int] = None
+    alerta_atorada: Optional[int] = 0
+    tasa_conversion_agente: Optional[float] = None
+    sla_cumplido: Optional[int] = None
+    tipo_rechazo: Optional[str] = None
+    # Última etapa
+    ultima_etapa: Optional[str] = None
+    ultima_subetapa: Optional[str] = None
+    fecha_ultima_etapa: Optional[str] = None
+    observaciones_etapa: Optional[str] = None
+    # Vinculaciones
+    poliza_numero: Optional[str] = None
+    agente_id: Optional[int] = None
+    agente_nombre: Optional[str] = None
+    # Auditoría
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    model_config = {"from_attributes": True}
+
+
+class EtapaOut(BaseModel):
+    """Un evento del timeline de etapas."""
+    id: int
+    nosol: Optional[str] = None
+    etapa: Optional[str] = None
+    subetapa: Optional[str] = None
+    fecetapa: Optional[str] = None
+    observaciones: Optional[str] = None
+    dias_tramite: Optional[int] = None
     model_config = {"from_attributes": True}
 
 
@@ -668,13 +714,38 @@ class PipelineResumen(BaseModel):
     pagada: int = 0
     rechazada: int = 0
     cancelada: int = 0
+    atoradas: int = 0
+    tasa_conversion: float = 0
+    dias_promedio_tramite: float = 0
+    pct_sla_cumplido: float = 0
+    por_ramo: dict = {}
     prima_estimada_total: float = 0
     prima_pagada_total: float = 0
+
+
+class PipelineFunnel(BaseModel):
+    """Funnel de conversión para gráfica."""
+    ingresadas: int = 0
+    en_proceso: int = 0
+    emitidas: int = 0
+    pagadas: int = 0
+    rechazadas: int = 0
+    canceladas: int = 0
 
 
 class SolicitudesResponse(BaseModel):
     solicitudes: List[SolicitudOut]
     pipeline: PipelineResumen
+    funnel: Optional[PipelineFunnel] = None
+
+
+class TrazabilidadResponse(BaseModel):
+    """Trazabilidad completa: Solicitud → Póliza → Pagos."""
+    solicitud: SolicitudOut
+    etapas: List[EtapaOut] = []
+    poliza: Optional[dict] = None     # Datos básicos de la póliza vinculada
+    pagos: List[dict] = []            # Pagos de esa póliza
+    resumen_pagos: Optional[dict] = None  # total pagado, último pago, etc.
 
 
 # ── Distribución de comisiones (Fase 5.3) ─────────────────────────
