@@ -92,7 +92,7 @@ steps:
 
 # Variables sustituibles (se configuran en el trigger)
 substitutions:
-  _API_URL: 'https://mag-api-PLACEHOLDER.run.app'
+  _API_URL: 'https://mag-api-922967332336.us-central1.run.app'
 
 images:
   - 'gcr.io/$PROJECT_ID/mag-api:$SHORT_SHA'
