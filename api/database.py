@@ -511,7 +511,7 @@ class Contratante(Base):
 class Solicitud(Base):
     """Solicitud de seguro — eje principal del sistema.
     Toda actividad comienza como solicitud y puede convertirse en póliza.
-    Datos crudos provienen de VW_CONCENTRADO_ETAPAS + Concentrado AXA."""
+    Datos crudos provienen de pestaña DATA concentrado del Excel original (66 cols)."""
     __tablename__ = "solicitudes"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -553,6 +553,17 @@ class Solicitud(Base):
     canal = Column(String(50))
     promotor_codigo = Column(String(20))
     promotor_nombre = Column(String(200))
+
+    # ── Datos enriquecidos (Excel original 66 cols) ──────────────
+    agente_nombre = Column(String(200))                          # Nombre completo agente
+    segmento = Column(String(100))                               # ALFA TOP, OMEGA, etc.
+    segmento_agrupado = Column(String(50))                       # ALFA, OMEGA, BETA
+    gestion_comercial = Column(String(200))                      # Gestión comercial / líder
+    poliza_6_digitos = Column(String(20))                        # Póliza corta (6 dígitos)
+    primer_ano = Column(String(50))                              # PRIMER AÑO 2024/2025
+    dias_devengados = Column(Integer)                            # Días devengados
+    estatus_pago = Column(String(50))                            # PAGADA / NO TOMADA
+    sub_etapa = Column(String(100))                              # Sub etapa del concentrado
 
     # ── Datos Calculados (Reglas de Negocio) ─────────────────────
     ramo_normalizado = Column(String(10))                        # S1: 'VIDA' | 'GMM'
