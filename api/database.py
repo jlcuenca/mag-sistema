@@ -129,6 +129,10 @@ class Poliza(Base):
     agente_id = Column(Integer, ForeignKey("agentes.id"))
     producto_id = Column(Integer, ForeignKey("productos.id"))
 
+    # ── Refactor v2.0: Vinculación con Solicitud ──────────────
+    solicitud_id = Column(Integer, ForeignKey("solicitudes.id"))
+    solicitud_nosol = Column(String(30), index=True)             # NOSOL para cruces
+
     asegurado_nombre = Column(String(200))
     contratante_nombre = Column(String(200))
     rfc = Column(String(20))
@@ -230,6 +234,8 @@ class Poliza(Base):
     producto = relationship("Producto", back_populates="polizas")
     recibos = relationship("Recibo", back_populates="poliza")
     contratante_rel = relationship("Contratante", back_populates="polizas")
+    solicitud_rel = relationship("Solicitud", foreign_keys=[solicitud_id],
+                                 viewonly=True, uselist=False)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -346,6 +352,48 @@ class Pago(Base):
     fuente = Column(String(50), default="PAGTOTAL")
     created_at = Column(String(30), default=lambda: datetime.now().isoformat())
 
+    # ── Columnas calculadas — Reglas PRIMA PAGADA (R–AY) ──────────
+    # Temporales (derivadas de fecha_aplicacion)
+    mes_aplicacion_nombre = Column(String(20))       # R: UPPER(TEXT(H2,"MMMM"))
+    anio_aplicacion_calc = Column(Integer)            # S: YEAR(H2)
+    mes_numero = Column(Integer)                      # AT: MONTH(H2)
+    trimestre = Column(String(20))                    # AQ: Q1, Q2, Q3, Q4
+
+    # Identificación de póliza
+    id_compuesto = Column(String(60))                 # T: poliza&fecini
+    poliza_estandar = Column(String(30))              # AF: IF(largo=11,LEFT(E,8),E)
+    poliza_6 = Column(String(6))                      # AY: LEFT(E2,6)
+    largo_poliza = Column(Integer)                    # AC: LEN(E2)
+    id_vida = Column(String(60))                      # AX: poliza_estandar&perini
+
+    # Enriquecimiento del agente (JOINs con agentes)
+    nombre_agente = Column(String(200))               # W: XLOOKUP→DIRECTORIO!B
+    nombre_promotor = Column(String(200))             # X: XLOOKUP→DIRECTORIO!AF
+    segmento = Column(String(50))                     # Y: XLOOKUP→DIRECTORIO!G
+    segmento_agrupado = Column(String(20))            # Z: ALFA/BETA/OMEGA
+    gestion_comercial = Column(String(100))           # AA: XLOOKUP→DIRECTORIO!K
+    estatus_agente = Column(String(50))               # AV: estatus agente
+    segmento_indicadores = Column(String(50))         # AW: segmento indicadores
+
+    # Enriquecimiento de póliza (JOINs con polizas)
+    fecini_poliza = Column(String(10))                # U: fecha_inicio de la póliza
+    primer_anio = Column(String(50))                  # V: PRIMER AÑO
+    primer_anio_vida = Column(String(50))             # AD: PRIMER AÑO VIDA
+    cuenta_o_no = Column(Integer)                     # AB: flag_nueva_formal
+    nueva_no_nueva = Column(Integer)                  # AI: es_nueva (0/1)
+    num_asegurados = Column(Integer)                  # AO: ASEGS de la póliza
+    cruze_vs_aut = Column(String(30))                 # AE: ¿existe en polizas?
+    poliza_exists = Column(String(30))                # AM: ¿existe en polizas?
+
+    # Datos fijos (de la póliza vinculada)
+    primer_anio_fijo = Column(String(50))             # AJ: primer_anio fijo
+    mes_apli_fijo = Column(String(20))                # AK: mes_aplicacion fijo
+    anio_apli_fijo = Column(Integer)                  # AL: anio_aplicacion fijo
+
+    # Clasificación
+    aportacion = Column(String(20))                   # AG: BASICA/EXCEDENTE
+    pct_comision = Column(Float)                      # AH: totcomision/neta
+
 
 class GestionComercial(Base):
     """Gestiones comerciales — líderes y asignación de agentes (Fase 3.5)"""
@@ -456,29 +504,95 @@ class Contratante(Base):
     solicitudes = relationship("Solicitud", back_populates="contratante_rel")
 
 
-# ── Solicitud (Fase 5.2) ────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════
+# SOLICITUDES — Entidad Raíz del Sistema (Refactor v2.0)
+# ══════════════════════════════════════════════════════════════════
+
 class Solicitud(Base):
+    """Solicitud de seguro — eje principal del sistema.
+    Toda actividad comienza como solicitud y puede convertirse en póliza.
+    Datos crudos provienen de VW_CONCENTRADO_ETAPAS + Concentrado AXA."""
     __tablename__ = "solicitudes"
 
     id = Column(Integer, primary_key=True, index=True)
-    folio = Column(String(30), unique=True)
+
+    # ── Datos Crudos Fijos (del CSV/Excel AXA) ──────────────────
+    nosol = Column(String(30), unique=True, index=True)          # Número de solicitud AXA
+    folio = Column(String(30), index=True)                       # Folio alterno (compat legacy)
+    nomramo = Column(String(50), index=True)                     # SALUD, VIDA
+    fecrecepcion = Column(String(30))                            # Fecha recepción AXA
+    contratante_nombre = Column(String(300))                     # Nombre contratante
+    dia_recepcion = Column(Integer)
+    mes_recepcion = Column(Integer, index=True)
+    ano_recepcion = Column(Integer, index=True)
+    idagente = Column(String(20), index=True)                    # Código del agente
+    nuevo = Column(Integer)                                      # 1=nueva, 0=reingreso
+    antaxa = Column(Integer)                                     # Antigüedad AXA
+    reingreso = Column(Integer)
+    contasol = Column(Integer)                                   # Contador solicitud
+    numsolicitantes = Column(Integer, default=1)                 # Asegurados solicitados
+    fecha_sistema = Column(String(30))
+
+    # ── Datos del Concentrado completo (60 cols) ────────────────
+    ramo = Column(String(100))                                   # Ramo / Subramo
+    subramo = Column(String(50))
+    plan = Column(String(100))                                   # Producto
+    forma_pago = Column(String(30))
+    suma_asegurada = Column(Float)
+    prima_estimada = Column(Float)                               # Prima contratada
+    prima_contratada = Column(Float)                             # PRIMA_CON
+    comision_total_sol = Column(Float)                           # COM_TOT
+    prima_pagada_sol = Column(Float)                             # PRI_PAG
+    num_revires = Column(Integer)                                # Devoluciones
+    f_captura_agente = Column(String(30))
+    f_envio_poliza = Column(String(30))
+    f_fin_sla = Column(String(30))
+    territorio = Column(String(100))
+    zona = Column(String(100))
+    oficina = Column(String(100))
+    canal = Column(String(50))
+    promotor_codigo = Column(String(20))
+    promotor_nombre = Column(String(200))
+
+    # ── Datos Calculados (Reglas de Negocio) ─────────────────────
+    ramo_normalizado = Column(String(10))                        # S1: 'VIDA' | 'GMM'
+    estado = Column(String(30), default="TRAMITE")               # S2: TRAMITE|EMITIDA|PAGADA|RECHAZADA|CANCELADA
+    dias_tramite = Column(Integer)                               # (fecetapa - fecrecepcion).days
+    alerta_atorada = Column(Integer, default=0)                  # S4: >15 días sin movimiento
+    tasa_conversion_agente = Column(Float)                       # S5: batch calculado
+    sla_cumplido = Column(Integer)                               # Dentro del SLA AXA?
+    tipo_rechazo = Column(String(50))                            # Clasificación rechazo
+
+    # ── Última etapa (desnormalizado para queries rápidos) ──────
+    ultima_etapa = Column(String(50))
+    ultima_subetapa = Column(String(50))
+    fecha_ultima_etapa = Column(String(30))
+    observaciones_etapa = Column(Text)
+
+    # ── Vinculaciones ───────────────────────────────────────────
+    poliza_numero = Column(String(30))                           # Póliza emitida (o NULL)
+    poliza_id = Column(Integer)                                  # Legacy (no FK)
     agente_id = Column(Integer, ForeignKey("agentes.id"))
     contratante_id = Column(Integer, ForeignKey("contratantes.id"))
-    poliza_id = Column(Integer, ForeignKey("polizas.id"))       # Una vez emitida
-    ramo = Column(String(100))
-    plan = Column(String(100))
-    suma_asegurada = Column(Float)
-    prima_estimada = Column(Float)
-    estado = Column(String(30), default="TRAMITE")              # TRAMITE, EMITIDA, PAGADA, RECHAZADA, CANCELADA
+
+    # Legacy compat
     fecha_solicitud = Column(String(10))
     fecha_emision = Column(String(10))
     fecha_pago = Column(String(10))
     notas = Column(Text)
 
+    # ── Auditoría ───────────────────────────────────────────────
+    fuente = Column(String(50), default="VW_CONCENTRADO")
     created_at = Column(String(30), default=lambda: datetime.now().isoformat())
     updated_at = Column(String(30), default=lambda: datetime.now().isoformat())
 
-    contratante_rel = relationship("Contratante", back_populates="solicitudes")
+    # ── Relaciones ──────────────────────────────────────────────
+    agente_rel = relationship("Agente", foreign_keys=[agente_id])
+    contratante_rel = relationship("Contratante", back_populates="solicitudes",
+                                   foreign_keys=[contratante_id])
+    etapas = relationship("EtapaSolicitud", back_populates="solicitud_rel",
+                          order_by="EtapaSolicitud.fecetapa",
+                          foreign_keys="[EtapaSolicitud.solicitud_id]")
 
 
 # ── Distribución de Comisiones (Fase 5.3) ────────────────────────
@@ -497,13 +611,15 @@ class DistribucionComision(Base):
     created_at = Column(String(30), default=lambda: datetime.now().isoformat())
 
 
-# ── Etapas de Solicitud (VW_CONCENTRADO_ETAPAS) ─────────────────
+# ── Etapas de Solicitud (VW_CONCENTRADO_ETAPAS) — Timeline ──────
 class EtapaSolicitud(Base):
-    """Registro de etapas del pipeline de solicitudes AXA — VW_CONCENTRADO_ETAPAS"""
+    """Registro de etapas del pipeline — cada fila es un evento en el timeline.
+    La cabecera vive en Solicitud; esta tabla es el historial de movimientos."""
     __tablename__ = "etapas_solicitudes"
 
     id = Column(Integer, primary_key=True, index=True)
     nosol = Column(String(30), index=True, nullable=False)       # Número de solicitud
+    solicitud_id = Column(Integer, ForeignKey("solicitudes.id")) # FK a cabecera
     nomramo = Column(String(50), index=True)                     # SALUD, VIDA
     fecrecepcion = Column(String(30))                            # Fecha de recepción
     contratante = Column(String(300))
@@ -529,6 +645,10 @@ class EtapaSolicitud(Base):
     dias_tramite = Column(Integer)                               # Días entre recepción y etapa
     fuente = Column(String(50), default="VW_CONCENTRADO")
     created_at = Column(String(30), default=lambda: datetime.now().isoformat())
+
+    # Relación a cabecera
+    solicitud_rel = relationship("Solicitud", back_populates="etapas",
+                                 foreign_keys=[solicitud_id])
 
 
 # ── Configuración Dinámica (Fase 5.5) ───────────────────────────
