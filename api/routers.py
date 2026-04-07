@@ -3091,7 +3091,7 @@ def get_pipeline_stats(
         SELECT s.idagente, a.nombre_completo,
                COUNT(*) as total,
                SUM(CASE WHEN s.estado IN ('EMITIDA','PAGADA') THEN 1 ELSE 0 END) as emitidas,
-               ROUND(CAST(SUM(CASE WHEN s.estado IN ('EMITIDA','PAGADA') THEN 1 ELSE 0 END) AS FLOAT) / COUNT(*) * 100, 1) as tasa
+               ROUND(CAST(SUM(CASE WHEN s.estado IN ('EMITIDA','PAGADA') THEN 1 ELSE 0 END) AS NUMERIC) / COUNT(*) * 100, 1) as tasa
         FROM solicitudes s
         LEFT JOIN agentes a ON s.agente_id = a.id
         WHERE s.idagente IS NOT NULL {filtro_anio}
