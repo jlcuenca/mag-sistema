@@ -272,7 +272,7 @@ export default function Dashboard() {
                                         <span className="badge badge-emerald">■ GMM</span>
                                     </div>
                                     <div className="chart-container">
-                                        <ResponsiveContainer width="100%" height="100%">
+                                        <ResponsiveContainer width="100%" height="100%" minHeight={250}>
                                             <BarChart data={(() => {
                                                 const MESES_ALL = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
                                                 const actMap = {};
@@ -316,7 +316,7 @@ export default function Dashboard() {
                                         <span className="badge badge-blue">■ Vida</span>
                                     </div>
                                     <div className="chart-container">
-                                        <ResponsiveContainer width="100%" height="100%">
+                                        <ResponsiveContainer width="100%" height="100%" minHeight={250}>
                                             <BarChart data={(() => {
                                                 const MESES_ALL = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
                                                 const actMap = {};

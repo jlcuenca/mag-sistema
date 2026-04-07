@@ -869,6 +869,8 @@ select option {
 .chart-container {
   position: relative;
   height: 280px;
+  min-height: 250px;
+  overflow: hidden;
 }
 
 /* ── METRIC RING ── */
