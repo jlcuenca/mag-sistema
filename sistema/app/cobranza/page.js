@@ -35,6 +35,23 @@ export default function Cobranza() {
     const [loading, setLoading] = useState(true);
     const [tab, setTab] = useState('deudores');
     const [busqueda, setBusqueda] = useState('');
+    // Modal de Historial de Pagos
+    const [pagosModal, setPagosModal] = useState(null);
+    const [pagosData, setPagosData] = useState([]);
+    const [loadingPagos, setLoadingPagos] = useState(false);
+
+    const abrirPagos = async (poliza) => {
+        setPagosModal(poliza);
+        setLoadingPagos(true);
+        try {
+            const res = await apiFetch(`/pagos?poliza=${poliza}`);
+            setPagosData(res.data || []);
+        } catch (e) {
+            console.error('Error cargando pagos', e);
+        } finally {
+            setLoadingPagos(false);
+        }
+    };
 
     useEffect(() => {
         setLoading(true);
@@ -202,7 +219,15 @@ export default function Cobranza() {
                                                                         {pc.icon} {pc.label}
                                                                     </span>
                                                                 </td>
-                                                                <td><code style={{ background: 'rgba(59,130,246,0.1)', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>{d.poliza}</code></td>
+                                                                <td>
+                                                                    <code 
+                                                                        onClick={() => abrirPagos(d.poliza)}
+                                                                        style={{ background: 'rgba(59,130,246,0.1)', padding: '4px 8px', borderRadius: 4, fontSize: 11, cursor: 'pointer', color: '#3b82f6', fontWeight: 'bold' }}
+                                                                        title="Ver historial de pagos"
+                                                                    >
+                                                                        {d.poliza}
+                                                                    </code>
+                                                                </td>
                                                                 <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                                     {d.contratante || d.asegurado || '-'}
                                                                 </td>
@@ -428,6 +453,68 @@ export default function Cobranza() {
                         </>
                     )}
                 </div>
+
+                {/* MODAL HISTORIAL DE PAGOS */}
+                {pagosModal && (
+                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ background: 'var(--bg-panel)', width: '800px', maxWidth: '95vw', maxHeight: '90vh', borderRadius: 16, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-card)' }}>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: 18 }}>Historial de Pagos (PAGTOTAL)</h3>
+                                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Póliza: {pagosModal}</div>
+                                </div>
+                                <button onClick={() => setPagosModal(null)} className="btn btn-ghost" style={{ padding: '4px 10px' }}>✕</button>
+                            </div>
+                            <div style={{ padding: 20, overflow: 'auto', flex: 1 }}>
+                                {loadingPagos ? (
+                                    <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Cargando movimientos...</div>
+                                ) : pagosData.length === 0 ? (
+                                    <div className="empty-state">
+                                        <div className="empty-state-icon">💸</div>
+                                        <div className="empty-state-title">Aún no hay recibos pagados</div>
+                                        <div className="empty-state-desc">No se encontró historial en PAGTOTAL para esta póliza.</div>
+                                    </div>
+                                ) : (
+                                    <div className="table-container">
+                                        <table style={{ fontSize: 12 }}>
+                                            <thead>
+                                                <tr>
+                                                    <th>Fecha Recibo</th>
+                                                    <th>Comprobante</th>
+                                                    <th style={{ textAlign: 'center' }}>Reglas (Trim/Mes)</th>
+                                                    <th style={{ textAlign: 'right' }}>Prima Pagada</th>
+                                                    <th style={{ textAlign: 'right' }}>Comisión</th>
+                                                    <th style={{ textAlign: 'right' }}>% Com</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {pagosData.map((p, i) => (
+                                                    <tr key={i}>
+                                                        <td style={{ fontWeight: 600 }}>{p.fecha_aplicacion}</td>
+                                                        <td><code style={{ fontSize: 10 }}>{p.comprobante || '-'}</code></td>
+                                                        <td style={{ textAlign: 'center' }}>
+                                                            {p.trimestre ? <span className="badge badge-purple" style={{ marginRight: 4 }}>Q{p.trimestre}</span> : null}
+                                                            {p.mes_aplicacion_nombre || '-'}
+                                                        </td>
+                                                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--accent-emerald)' }}>{fmt(p.prima_neta)}</td>
+                                                        <td style={{ textAlign: 'right' }}>{fmt(p.comision_total)}</td>
+                                                        <td style={{ textAlign: 'right' }}>{p.pct_comision ? (p.pct_comision*100).toFixed(1)+'%' : '-'}</td>
+                                                    </tr>
+                                                ))}
+                                                <tr style={{ background: 'var(--bg-card)', fontWeight: 'bold' }}>
+                                                    <td colSpan="3" style={{ textAlign: 'right' }}>Total Acumulado:</td>
+                                                    <td style={{ textAlign: 'right', color: 'var(--accent-emerald)' }}>{fmt(pagosData.reduce((s,p) => s + (p.prima_neta||0), 0))}</td>
+                                                    <td style={{ textAlign: 'right' }}>{fmt(pagosData.reduce((s,p) => s + (p.comision_total||0), 0))}</td>
+                                                    <td></td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </main>
         </div>
     );
