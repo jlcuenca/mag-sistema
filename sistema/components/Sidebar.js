@@ -7,6 +7,7 @@ const navSections = [
         title: 'Principal',
         items: [
             { href: '/dashboard', icon: '📊', label: 'Dashboard' },
+            { href: '/dashboard/icp-2026', icon: '🏆', label: 'ICP 2026' },
             { href: '/ejecutivo', icon: '🏛️', label: 'Vista Ejecutiva' },
             { href: '/finanzas', icon: '💰', label: 'Finanzas' },
             { href: '/cobranza', icon: '💳', label: 'Cobranza' },

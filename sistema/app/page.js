@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 
 export default function Home() {
   const router = useRouter();
-  useEffect(() => { router.replace('/dashboard'); }, [router]);
+  useEffect(() => { router.replace('/dashboard/icp-2026'); }, [router]);
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0a0e1a' }}>
       <div style={{ textAlign: 'center' }}>

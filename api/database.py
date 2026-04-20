@@ -662,6 +662,32 @@ class EtapaSolicitud(Base):
                                  foreign_keys=[solicitud_id])
 
 
+# ── Siniestros (Fase 4: Siniestralidad) ──────────────────────────
+class Siniestro(Base):
+    __tablename__ = "siniestros"
+    id = Column(Integer, primary_key=True, index=True)
+    no_siniestro = Column(String, unique=True, index=True)
+    poliza_numero = Column(String, index=True)
+    agente_codigo = Column(String, index=True)
+    ramo = Column(String)
+    monto_pagado = Column(Float, default=0)
+    monto_reserva = Column(Float, default=0)
+    monto_total = Column(Float, default=0)
+    status = Column(String) # ABIERTO, CERRADO
+    fecha_ocurrencia = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class PersistenciaSnapshot(Base):
+    __tablename__ = "persistencia_snapshots"
+    id = Column(Integer, primary_key=True, index=True)
+    agente_codigo = Column(String, index=True) # "TOTAL" para el promotor
+    anio = Column(Integer)
+    mes = Column(Integer)
+    valor_k1 = Column(Float) # Porcentaje de persistencia
+    segmento_axa = Column(String) # Opcional: Clasificación interna AXA
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ── Configuración Dinámica (Fase 5.5) ───────────────────────────
 class Configuracion(Base):
     __tablename__ = "configuraciones"

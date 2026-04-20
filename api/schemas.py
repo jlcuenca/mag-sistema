@@ -789,3 +789,76 @@ class ConfiguracionResponse(BaseModel):
     configuraciones: List[ConfiguracionItem]
     grupos: List[str]
 
+# ── ICP 2026 ──────────────────────────────────────────────────────
+class IndicadorICP(BaseModel):
+    id: int
+    nombre: str
+    actual: str
+    meta: str
+    cumple: bool
+
+class ICP2026Response(BaseModel):
+    cartera_categoria: str
+    segmento_alcanzado: str
+    total_cumplidos: int
+    indicadores: List[IndicadorICP]
+    # Calidad (Bonos)
+    persistencia_actual: float
+    siniestralidad_actual: float
+    bono_calidad_aplica: bool
+    anio: int
+    periodo: str  # e.g. "Acumulado Anual"
+
+
+class ReclutaDetalle(BaseModel):
+    agente_id: int
+    nombre: str
+    codigo: str
+    fecha_alta: str
+    anio_icp: int
+    actual_vida: int
+    actual_prima: float
+    meta_vida: int
+    meta_prima: float
+    cumple: bool
+
+
+class VidaDetalle(BaseModel):
+    poliza: str
+    agente: str
+    codigo_agente: str
+    fecha_inicio: str
+    prima_anual: float
+    puntos: int
+
+
+class GMMDetalle(BaseModel):
+    poliza: str
+    agente: str
+    codigo_agente: str
+    fecha_inicio: str
+    num_asegurados: int
+
+
+class AlfaDetalle(BaseModel):
+    agente: str
+    codigo: str
+    vida_puntos: int
+    vida_prima: float
+    meta_puntos: int
+    meta_prima: float
+    cumple: bool
+
+
+class CrecimientoDetalle(BaseModel):
+    ramo: str
+    monto_2025: float
+    monto_2026: float
+    crecimiento: float
+
+
+class BonoDetalle(BaseModel):
+    agente: str
+    codigo: str
+    produccion_total: float
+    estatus_bono: bool
