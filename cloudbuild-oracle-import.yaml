@@ -1,0 +1,42 @@
+# cloudbuild-oracle-import.yaml — Pipeline de actualización desde Oracle
+# Ejecuta la extracción de los 3 insumos principales (Polizas, Pagos, Solicitudes)
+
+steps:
+  # 1. Build de la imagen con las nuevas dependencias (oracledb)
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/mag-oracle-importer:latest', '.']
+    id: 'build-importer'
+
+  # 2. Ejecutar el script orquestador
+  # Se conecta a Cloud SQL vía el proxy de Cloud Run Job o inyección de DB_URL
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    secretEnv: ['DATABASE_URL', 'ORACLE_USER', 'ORACLE_PASS', 'ORACLE_DSN']
+    args:
+      - '-c'
+      - |
+        docker run --rm \
+          -e DATABASE_URL="$$DATABASE_URL" \
+          -e ORACLE_USER="$$ORACLE_USER" \
+          -e ORACLE_PASS="$$ORACLE_PASS" \
+          -e ORACLE_DSN="$$ORACLE_DSN" \
+          gcr.io/$PROJECT_ID/mag-oracle-importer:latest \
+          python scripts/importar_todo_oracle.py
+    id: 'run-import'
+    waitFor: ['build-importer']
+
+timeout: '1800s' # 30 minutos por si la descarga es pesada
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+# Estos secretos deben estar creados en Google Secret Manager
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/mag-db-url/versions/latest
+      env: 'DATABASE_URL'
+    - versionName: projects/$PROJECT_ID/secrets/oracle-user/versions/latest
+      env: 'ORACLE_USER'
+    - versionName: projects/$PROJECT_ID/secrets/oracle-pass/versions/latest
+      env: 'ORACLE_PASS'
+    - versionName: projects/$PROJECT_ID/secrets/oracle-dsn/versions/latest
+      env: 'ORACLE_DSN'

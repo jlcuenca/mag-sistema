@@ -1,13 +1,13 @@
 """
 Routers FastAPI para MAG Sistema
 """
-from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func, case
 from typing import Optional, List
 import pandas as pd
-import io, os, re
+import io, os, re, subprocess, sys
 from collections import defaultdict
 
 from .database import (
@@ -189,6 +189,28 @@ def get_meta_anual(metas_auto: dict, ramo: str) -> float:
 # DASHBOARD
 # ═══════════════════════════════════════════════════════════════════
 router_dashboard = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+
+
+@router_dashboard.post("/sync-oracle", response_model=ImportacionResult)
+async def sync_oracle(background_tasks: BackgroundTasks):
+    """
+    Inicia el pipeline de sincronización completa con Oracle en segundo plano.
+    """
+    def run_oracle_pipeline():
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        script_path = os.path.join(base_dir, "scripts", "importar_todo_oracle.py")
+        try:
+            subprocess.run([sys.executable, script_path], check=True)
+            print("Successfully completed Oracle sync pipeline")
+        except Exception as e:
+            print(f"Error running Oracle sync pipeline: {e}")
+
+    background_tasks.add_task(run_oracle_pipeline)
+    return {
+        "success": True,
+        "mensaje": "Sincronización con Oracle iniciada en segundo plano. Los datos se actualizarán en unos minutos."
+    }
+
 
 
 @router_dashboard.get("", response_model=DashboardResponse)

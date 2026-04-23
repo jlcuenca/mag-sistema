@@ -128,6 +128,7 @@ export default function Dashboard() {
     const [anio, setAnio] = useState(2025);
     const [loading, setLoading] = useState(true);
     const [ramoFilter, setRamoFilter] = useState('todos'); // todos | vida | gmm | autos
+    const [syncing, setSyncing] = useState(false);
 
     useEffect(() => {
         setLoading(true);
@@ -135,6 +136,19 @@ export default function Dashboard() {
             .then(d => { setData(d); setLoading(false); })
             .catch(() => setLoading(false));
     }, [anio]);
+
+    const handleSyncOracle = async () => {
+        if (!confirm('¿Deseas iniciar la sincronización completa con Oracle? Este proceso puede tardar unos minutos.')) return;
+        setSyncing(true);
+        try {
+            const res = await apiFetch('/dashboard/sync-oracle', { method: 'POST' });
+            alert(res.mensaje);
+        } catch (err) {
+            alert('Error al sincronizar: ' + err.message);
+        } finally {
+            setSyncing(false);
+        }
+    };
 
     const k = data?.kpis || {};
     const mensual = (data?.produccion_mensual || []).map(m => ({
@@ -204,6 +218,18 @@ export default function Dashboard() {
                         </div>
                     </div>
                     <div className="header-right">
+                        <button 
+                            className="btn btn-primary" 
+                            onClick={handleSyncOracle} 
+                            disabled={syncing}
+                            style={{ 
+                                background: syncing ? 'var(--bg-secondary)' : 'var(--grad-blue)',
+                                border: 'none', padding: '7px 15px', borderRadius: 8, color: 'white', fontWeight: 600, cursor: syncing ? 'not-allowed' : 'pointer',
+                                display: 'flex', alignItems: 'center', gap: 8
+                            }}
+                        >
+                            {syncing ? '⌛ Sincronizando...' : '🔄 Sincronizar Oracle'}
+                        </button>
                         <select value={anio} onChange={e => setAnio(+e.target.value)} style={{ padding: '7px 12px' }}>
                             {[2022, 2023, 2024, 2025, 2026].map(y => <option key={y}>{y}</option>)}
                         </select>
