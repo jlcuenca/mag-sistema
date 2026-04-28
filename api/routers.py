@@ -277,6 +277,21 @@ async def sync_oracle_status():
 
 
 
+@router_dashboard.get("/ping-oracle")
+async def ping_oracle():
+    """Prueba rápida de conexión a Oracle."""
+    from .oracle_client import get_oracle_connection
+    try:
+        conn = get_oracle_connection(thick_mode=False)
+        cursor = conn.cursor()
+        cursor.execute("SELECT SYSDATE FROM DUAL")
+        res = cursor.fetchone()
+        conn.close()
+        return {"success": True, "oracle_time": str(res[0]), "mensaje": "Conexión exitosa a Oracle (Thin Mode)"}
+    except Exception as e:
+        return {"success": False, "error": str(e), "mensaje": "Error de conexión a Oracle"}
+
+
 @router_dashboard.get("", response_model=DashboardResponse)
 def get_dashboard(
     anio: int = Query(2025, description="Año de análisis"),
