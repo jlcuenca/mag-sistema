@@ -44,7 +44,7 @@ steps:
       - '--memory=512Mi'
       - '--cpu=1'
       - '--timeout=60'
-      - '--update-env-vars=DEMO_MODE=false,PYTHONUTF8=1,FRONTEND_URL=https://mag-frontend-922967332336.us-central1.run.app'
+      - '--update-env-vars=DEMO_MODE=false,PYTHONUTF8=1,FRONTEND_URL=https://mag-frontend-922967332336.us-central1.run.app,ORACLE_USER=ucartera,ORACLE_PASS=tKM75T,ORACLE_DSN=54.184.22.19:1521/XE'
       - '--add-cloudsql-instances=magia-mag:us-central1:mag-db'
     id: 'deploy-backend'
     waitFor: ['push-backend']
