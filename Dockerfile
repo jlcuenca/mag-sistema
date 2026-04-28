@@ -4,24 +4,28 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Dependencias del sistema (psycopg2 + Oracle Client)
+# 1. Dependencias del sistema (psycopg2 + Oracle Client)
+# libaio1 es crítica para el funcionamiento del cliente de Oracle.
+# libnsl2 es necesaria en Debian Bookworm para compatibilidad con versiones anteriores.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev libaio1 wget unzip && \
+    gcc libpq-dev libaio1 libnsl2 wget unzip && \
     mkdir -p /opt/oracle && \
-    cd /opt/oracle && \
-    wget https://download.oracle.com/otn_software/linux/instantclient/211000/instantclient-basiclite-linux.x64-21.1.0.0.0.zip && \
-    unzip instantclient-basiclite-linux.x64-21.1.0.0.0.zip && \
-    rm -f instantclient-basiclite-linux.x64-21.1.0.0.0.zip && \
+    wget --no-check-certificate https://download.oracle.com/otn_software/linux/instantclient/2121000/instantclient-basiclite-linux.x64-21.21.0.0.0dbru.zip -O /opt/oracle/oracle.zip && \
+    unzip /opt/oracle/oracle.zip -d /opt/oracle && \
+    rm -f /opt/oracle/oracle.zip && \
+    echo /opt/oracle/instantclient_21_21 > /etc/ld.so.conf.d/oracle-instantclient.conf && \
+    ldconfig && \
     rm -rf /var/lib/apt/lists/*
 
-ENV ORACLE_CLIENT_PATH=/opt/oracle/instantclient_21_1
-ENV LD_LIBRARY_PATH=/opt/oracle/instantclient_21_1
+# Configurar variables de entorno para el modo Thick
+ENV ORACLE_CLIENT_PATH=/opt/oracle/instantclient_21_21
+ENV LD_LIBRARY_PATH=/opt/oracle/instantclient_21_21
 
-# Dependencias Python
+# 2. Dependencias Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Código de la aplicación
+# 3. Código de la aplicación
 COPY main.py .
 COPY api/ ./api/
 COPY scripts/ ./scripts/
