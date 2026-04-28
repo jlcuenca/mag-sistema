@@ -190,26 +190,90 @@ def get_meta_anual(metas_auto: dict, ramo: str) -> float:
 # ═══════════════════════════════════════════════════════════════════
 router_dashboard = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
+import logging
+from datetime import datetime as _dt
+
+logger = logging.getLogger(__name__)
+
+# Estado de la última sincronización Oracle (in-memory)
+_oracle_sync_status = {
+    "running": False,
+    "last_run": None,
+    "last_status": None,   # "success" | "error" | None
+    "last_message": None,
+    "last_duration_seconds": None,
+    "details": [],
+}
+
 
 @router_dashboard.post("/sync-oracle", response_model=ImportacionResult)
 async def sync_oracle(background_tasks: BackgroundTasks):
     """
     Inicia el pipeline de sincronización completa con Oracle en segundo plano.
     """
+    if _oracle_sync_status["running"]:
+        return {
+            "success": False,
+            "mensaje": "Ya hay una sincronización en curso. Espera a que termine."
+        }
+
     def run_oracle_pipeline():
+        import time
+        _oracle_sync_status["running"] = True
+        _oracle_sync_status["last_run"] = _dt.now().isoformat()
+        _oracle_sync_status["details"] = []
+        start = time.time()
+
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         script_path = os.path.join(base_dir, "scripts", "importar_todo_oracle.py")
+
         try:
-            subprocess.run([sys.executable, script_path], check=True)
-            print("Successfully completed Oracle sync pipeline")
+            result = subprocess.run(
+                [sys.executable, script_path],
+                capture_output=True, text=True, timeout=600
+            )
+            duration = round(time.time() - start, 1)
+            _oracle_sync_status["last_duration_seconds"] = duration
+
+            # Capturar las últimas líneas de salida
+            stdout_lines = (result.stdout or "").strip().split("\n")[-20:]
+            stderr_lines = (result.stderr or "").strip().split("\n")[-10:]
+            _oracle_sync_status["details"] = stdout_lines
+
+            if result.returncode == 0:
+                _oracle_sync_status["last_status"] = "success"
+                _oracle_sync_status["last_message"] = f"Pipeline completado en {duration}s"
+                logger.info(f"[ORACLE SYNC] Éxito en {duration}s")
+            else:
+                _oracle_sync_status["last_status"] = "error"
+                error_msg = stderr_lines[-1] if stderr_lines else "Error desconocido"
+                _oracle_sync_status["last_message"] = f"Error: {error_msg}"
+                logger.error(f"[ORACLE SYNC] Falló en {duration}s: {error_msg}")
+                _oracle_sync_status["details"].extend(stderr_lines)
+
+        except subprocess.TimeoutExpired:
+            _oracle_sync_status["last_status"] = "error"
+            _oracle_sync_status["last_message"] = "Timeout: el proceso tardó más de 10 minutos"
+            logger.error("[ORACLE SYNC] Timeout después de 600s")
         except Exception as e:
-            print(f"Error running Oracle sync pipeline: {e}")
+            _oracle_sync_status["last_status"] = "error"
+            _oracle_sync_status["last_message"] = f"Excepción: {str(e)}"
+            logger.error(f"[ORACLE SYNC] Excepción: {e}")
+        finally:
+            _oracle_sync_status["running"] = False
 
     background_tasks.add_task(run_oracle_pipeline)
     return {
         "success": True,
-        "mensaje": "Sincronización con Oracle iniciada en segundo plano. Los datos se actualizarán en unos minutos."
+        "mensaje": "Sincronización con Oracle iniciada en segundo plano. Consulta el estatus en unos minutos."
     }
+
+
+@router_dashboard.get("/sync-oracle/status")
+async def sync_oracle_status():
+    """Retorna el estatus de la última sincronización con Oracle."""
+    return _oracle_sync_status
+
 
 
 

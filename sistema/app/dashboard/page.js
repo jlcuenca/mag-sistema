@@ -129,6 +129,7 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true);
     const [ramoFilter, setRamoFilter] = useState('todos'); // todos | vida | gmm | autos
     const [syncing, setSyncing] = useState(false);
+    const [syncStatus, setSyncStatus] = useState(null); // {status, message, duration}
 
     useEffect(() => {
         setLoading(true);
@@ -137,15 +138,46 @@ export default function Dashboard() {
             .catch(() => setLoading(false));
     }, [anio]);
 
+    // Cargar estatus de sync al montar
+    useEffect(() => {
+        apiFetch('/dashboard/sync-oracle/status')
+            .then(s => { if (s.last_status) setSyncStatus(s); })
+            .catch(() => {});
+    }, []);
+
     const handleSyncOracle = async () => {
         if (!confirm('¿Deseas iniciar la sincronización completa con Oracle? Este proceso puede tardar unos minutos.')) return;
         setSyncing(true);
+        setSyncStatus({ running: true, last_message: 'Conectando con Oracle...' });
         try {
             const res = await apiFetch('/dashboard/sync-oracle', { method: 'POST' });
-            alert(res.mensaje);
+            if (!res.success) {
+                setSyncStatus({ last_status: 'error', last_message: res.mensaje });
+                setSyncing(false);
+                return;
+            }
+            // Polling cada 5 segundos para monitorear progreso
+            const pollInterval = setInterval(async () => {
+                try {
+                    const status = await apiFetch('/dashboard/sync-oracle/status');
+                    setSyncStatus(status);
+                    if (!status.running) {
+                        clearInterval(pollInterval);
+                        setSyncing(false);
+                        // Si fue exitoso, refrescar datos del dashboard
+                        if (status.last_status === 'success') {
+                            apiFetch(`/dashboard?anio=${anio}`)
+                                .then(d => setData(d))
+                                .catch(() => {});
+                        }
+                    }
+                } catch {
+                    clearInterval(pollInterval);
+                    setSyncing(false);
+                }
+            }, 5000);
         } catch (err) {
-            alert('Error al sincronizar: ' + err.message);
-        } finally {
+            setSyncStatus({ last_status: 'error', last_message: 'Error al iniciar: ' + err.message });
             setSyncing(false);
         }
     };
@@ -236,6 +268,43 @@ export default function Dashboard() {
                         <span className="badge badge-emerald">🟢 En línea</span>
                     </div>
                 </header>
+
+                {/* ── Oracle Sync Status Toast ── */}
+                {syncStatus && (
+                    <div style={{
+                        margin: '0 28px', padding: '10px 18px', borderRadius: 10,
+                        display: 'flex', alignItems: 'center', gap: 12, fontSize: 12,
+                        background: syncStatus.running ? 'rgba(59,130,246,0.12)'
+                            : syncStatus.last_status === 'success' ? 'rgba(16,185,129,0.12)'
+                            : 'rgba(244,63,94,0.12)',
+                        border: `1px solid ${syncStatus.running ? 'rgba(59,130,246,0.3)'
+                            : syncStatus.last_status === 'success' ? 'rgba(16,185,129,0.3)'
+                            : 'rgba(244,63,94,0.3)'}`,
+                        color: syncStatus.running ? 'var(--accent-blue-light)'
+                            : syncStatus.last_status === 'success' ? 'var(--accent-emerald)'
+                            : 'var(--accent-rose)',
+                    }}>
+                        <span style={{ fontSize: 16 }}>
+                            {syncStatus.running ? '⏳' : syncStatus.last_status === 'success' ? '✅' : '❌'}
+                        </span>
+                        <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600 }}>
+                                {syncStatus.running ? 'Sincronización en curso...'
+                                    : syncStatus.last_status === 'success' ? 'Última sincronización exitosa'
+                                    : 'Error en última sincronización'}
+                            </div>
+                            <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                                {syncStatus.last_message}
+                                {syncStatus.last_run && !syncStatus.running && ` · ${new Date(syncStatus.last_run).toLocaleString()}`}
+                                {syncStatus.last_duration_seconds && ` · ${syncStatus.last_duration_seconds}s`}
+                            </div>
+                        </div>
+                        {!syncStatus.running && (
+                            <button onClick={() => setSyncStatus(null)}
+                                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                        )}
+                    </div>
+                )}
 
                 <div className="page-content fade-in">
                     {loading ? (
