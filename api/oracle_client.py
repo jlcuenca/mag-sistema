@@ -10,11 +10,16 @@ ORACLE_PASS = os.getenv("ORACLE_PASS")
 ORACLE_DSN = os.getenv("ORACLE_DSN")
 ORACLE_CLIENT_PATH = os.getenv("ORACLE_CLIENT_PATH")
 
-def get_oracle_connection(thick_mode=False):
+logger.info(f"Oracle Config Check: USER={'SET' if ORACLE_USER else 'MISSING'}, DSN={'SET' if ORACLE_DSN else 'MISSING'}")
+
+def get_oracle_connection(thick_mode=None):
     """
     Retorna una conexión a la base de datos Oracle.
-    Por defecto intenta modo Thin. Si thick_mode es True, intenta inicializar el Instant Client.
+    Si thick_mode es None, lo activa automáticamente si ORACLE_CLIENT_PATH está presente.
     """
+    if thick_mode is None:
+        thick_mode = bool(ORACLE_CLIENT_PATH)
+    
     try:
         if thick_mode:
             try:
